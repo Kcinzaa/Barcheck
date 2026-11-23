@@ -441,3 +441,44 @@ a.btn-plain {
     justify-content: center;
   }
 }
+
+/* ---------- Store Requisition ---------- */
+
+.req-people {
+  display: grid;
+  gap: var(--space-2);
+}
+
+.req-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--space-3);
+  min-height: var(--touch-min);
+  padding: var(--space-2) var(--space-3);
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.req-info {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.req-code {
+  font-size: 0.75rem;
+  color: var(--color-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.req-name {
+  overflow-wrap: anywhere;
+}
+
+@media (min-width: 900px) {
+  .req-people {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
