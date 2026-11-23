@@ -33,15 +33,51 @@ const reportPrefix = (barId: string) => `barcheck:report:${barId}:`
 const reportKey = (barId: string, date: string) => reportPrefix(barId) + date
 const reqKey = (barId: string, date: string) => `barcheck:req:${barId}:${date}`
 
-function read<T>(key: string): T | null {
+const isObj = (x: unknown): x is Record<string, unknown> =>
+  typeof x === 'object' && x !== null && !Array.isArray(x)
+
+const isStatus = (s: unknown) => s === 'draft' || s === 'saved'
+
+function isReport(x: unknown, barId: string, date?: string): x is ReportRecord {
+  if (!isObj(x)) return false
+  return (
+    x.barId === barId &&
+    typeof x.date === 'string' &&
+    (date === undefined || x.date === date) &&
+    isStatus(x.status) &&
+    Array.isArray(x.rows) &&
+    x.rows.every((r) => isObj(r) && typeof r.itemCode === 'string')
+  )
+}
+
+function isReq(x: unknown, barId: string, date: string): x is ReqRecord {
+  if (!isObj(x)) return false
+  return (
+    x.barId === barId &&
+    x.date === date &&
+    isStatus(x.status) &&
+    Array.isArray(x.rows) &&
+    x.rows.every((r) => isObj(r) && typeof r.itemCode === 'string' && typeof r.qty === 'number')
+  )
+}
+
+function read(key: string): unknown {
   try {
     const raw = localStorage.getItem(key)
-    if (raw === null) return null
-    const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? (parsed as T) : null
+    return raw === null ? null : JSON.parse(raw)
   } catch {
     return null
   }
+}
+
+function readReport(barId: string, date: string): ReportRecord | null {
+  const v = read(reportKey(barId, date))
+  return isReport(v, barId, date) ? v : null
+}
+
+function readReq(barId: string, date: string): ReqRecord | null {
+  const v = read(reqKey(barId, date))
+  return isReq(v, barId, date) ? v : null
 }
 
 function write(key: string, value: unknown): void {
@@ -53,9 +89,9 @@ function write(key: string, value: unknown): void {
 }
 
 export const repo: Repo = {
-  getReport: (barId, date) => read<ReportRecord>(reportKey(barId, date)),
+  getReport: readReport,
   saveReport: (r) => write(reportKey(r.barId, r.date), r),
-  getReq: (barId, date) => read<ReqRecord>(reqKey(barId, date)),
+  getReq: readReq,
   saveReq: (r) => write(reqKey(r.barId, r.date), r),
 
   listReports(barId, month) {
@@ -67,8 +103,9 @@ export const repo: Repo = {
         const key = localStorage.key(i)
         if (!key || !key.startsWith(prefix)) continue
         if (!key.slice(prefix.length).startsWith(datePrefix)) continue
-        const rec = read<ReportRecord>(key)
-        if (rec) out.push(rec)
+        const keyDate = key.slice(prefix.length)
+        const rec = read(key)
+        if (isReport(rec, barId, keyDate)) out.push(rec)
       }
     } catch {
       return []
@@ -78,8 +115,8 @@ export const repo: Repo = {
 
   statusFor(barId, date) {
     return {
-      report: read<ReportRecord>(reportKey(barId, date))?.status ?? 'none',
-      req: read<ReqRecord>(reqKey(barId, date))?.status ?? 'none',
+      report: readReport(barId, date)?.status ?? 'none',
+      req: readReq(barId, date)?.status ?? 'none',
     }
   },
 }

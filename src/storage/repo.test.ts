@@ -69,6 +69,28 @@ describe('repo', () => {
     expect(repo.statusFor('pf', '2026-11-01')).toEqual({ report: 'none', req: 'none' })
   })
 
+  it('rejects malformed rows and wrong shapes like missing records', () => {
+    const k = 'barcheck:report:pf:2026-11-01'
+    for (const bad of ['{"rows":"x"}', '{}', '[]', 'null', JSON.stringify({ ...report('pf', '2026-11-01'), rows: [null] }), JSON.stringify({ ...report('pf', '2026-11-01'), status: 'weird' })]) {
+      localStorage.setItem(k, bad)
+      localStorage.setItem('barcheck:req:pf:2026-11-01', bad)
+      expect(repo.getReport('pf', '2026-11-01')).toBeNull()
+      expect(repo.getReq('pf', '2026-11-01')).toBeNull()
+      expect(repo.listReports('pf', '2026-11')).toEqual([])
+      expect(repo.statusFor('pf', '2026-11-01')).toEqual({ report: 'none', req: 'none' })
+    }
+  })
+
+  it('rejects records whose barId or date disagree with the key', () => {
+    localStorage.setItem('barcheck:report:pf:2026-11-01', JSON.stringify(report('other', '2026-11-01')))
+    localStorage.setItem('barcheck:report:pf:2026-11-02', JSON.stringify(report('pf', '2026-12-02')))
+    localStorage.setItem('barcheck:req:pf:2026-11-01', JSON.stringify(req('pf', '2026-11-09')))
+    expect(repo.getReport('pf', '2026-11-01')).toBeNull()
+    expect(repo.getReq('pf', '2026-11-01')).toBeNull()
+    expect(repo.listReports('pf', '2026-11')).toEqual([])
+    expect(repo.listReports('pf', '2026-12')).toEqual([])
+  })
+
   it('does not throw when setItem fails (quota/security)', () => {
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new DOMException('full', 'QuotaExceededError')
