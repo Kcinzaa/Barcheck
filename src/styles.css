@@ -482,3 +482,137 @@ a.btn-plain {
     grid-template-columns: repeat(3, 1fr);
   }
 }
+
+/* ---------- Monthly Summary ---------- */
+
+.m-back {
+  display: inline-flex;
+}
+
+.m-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: var(--space-3);
+}
+
+.m-controls select,
+.m-controls input {
+  width: 100%;
+  min-width: 0;
+  padding: 0 var(--space-2);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+  background: var(--color-surface);
+}
+
+.m-export {
+  width: 100%;
+  margin-bottom: var(--space-4);
+}
+
+.m-export:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.m-notes {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--space-2);
+  margin-bottom: var(--space-3);
+  color: var(--color-muted);
+}
+
+.m-scroll {
+  max-width: 100%;
+  overflow-x: auto;
+  background: var(--color-surface);
+  border: 1px solid var(--color-border);
+  border-radius: var(--radius);
+}
+
+.m-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 0.875rem;
+}
+
+.m-table th,
+.m-table td {
+  padding: var(--space-2);
+  border-bottom: 1px solid var(--color-border);
+  text-align: left;
+  vertical-align: top;
+}
+
+.m-table thead th {
+  white-space: nowrap;
+  color: var(--color-muted);
+  font-weight: 600;
+}
+
+.m-table .num {
+  text-align: right;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+
+.m-table .num small {
+  display: block;
+  color: var(--color-muted);
+  font-size: 0.75rem;
+}
+
+.m-table .num.negative {
+  color: var(--color-danger);
+}
+
+.m-cat th {
+  background: var(--color-bg);
+  font-size: 0.75rem;
+  letter-spacing: 0.02em;
+}
+
+.m-item {
+  position: sticky;
+  left: 0;
+  z-index: 1;
+  min-width: 140px;
+  max-width: 180px;
+  padding: 0 !important;
+  background: var(--color-surface);
+}
+
+.m-toggle {
+  display: flex;
+  width: 100%;
+  align-items: flex-start;
+  gap: var(--space-1);
+  padding: var(--space-2);
+  background: transparent;
+  color: var(--color-primary);
+  border: 0;
+  font-size: 0.875rem;
+  font-weight: 600;
+  text-align: left;
+  cursor: pointer;
+}
+
+.m-name {
+  overflow-wrap: anywhere;
+}
+
+.m-daily-row > td {
+  background: var(--color-bg);
+}
+
+.m-daily {
+  border-collapse: collapse;
+}
+
+.m-daily th,
+.m-daily td {
+  padding: var(--space-1) var(--space-3) var(--space-1) 0;
+  border: 0;
+}
