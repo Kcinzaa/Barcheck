@@ -4,6 +4,8 @@ import { parseNum } from '../domain/units'
 interface Props {
   value: number
   onChange(n: number): void
+  /** Called instead of onChange(0) when the text becomes empty (lets callers tell blank from 0). */
+  onBlank?(): void
   label: string
   /** Short unit caption under the field, e.g. "ขวด" or "oz". */
   unit?: string
@@ -12,8 +14,8 @@ interface Props {
 const show = (n: number) => (n === 0 ? '' : String(n))
 const round1 = (n: number) => Math.round(n * 10) / 10
 
-/** +/− stepper with a free-text decimal field. Blank or invalid text counts as 0. */
-export default function QtyInput({ value, onChange, label, unit }: Props) {
+/** +/− stepper with a free-text decimal field. Blank or invalid text counts as 0; negatives clamp to 0. */
+export default function QtyInput({ value, onChange, onBlank, label, unit }: Props) {
   const [text, setText] = useState(() => show(value))
 
   // Resync when the value changes from outside (stepper, restore) but not while
@@ -38,8 +40,11 @@ export default function QtyInput({ value, onChange, label, unit }: Props) {
           aria-label={label}
           value={text}
           onChange={(e) => {
-            setText(e.target.value)
-            onChange(parseNum(e.target.value))
+            const raw = e.target.value
+            // No negative quantities: drop a typed minus sign so the field never shows one.
+            setText(raw.replace(/-/g, ''))
+            if (raw.trim() === '' && onBlank) onBlank()
+            else onChange(Math.max(0, parseNum(raw)))
           }}
         />
         {unit && <span className="qty-unit" aria-hidden="true">{unit}</span>}

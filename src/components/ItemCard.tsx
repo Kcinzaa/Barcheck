@@ -75,7 +75,7 @@ function ItemCard({ item, row, onChange }: Props) {
 
       <fieldset className="ic-field ic-field-open">
         <legend>
-          Open
+          Open{' '}
           {row.openFrom && (
             <span className="ic-open-from" data-testid="open-from">
               เติมจากวันที่ {row.openFrom}
@@ -145,12 +145,14 @@ function ItemCard({ item, row, onChange }: Props) {
                 unit="ขวด"
                 value={row.countedBtl ?? 0}
                 onChange={(n) => set({ countedBtl: n })}
+                onBlank={() => set({ countedBtl: undefined })}
               />
               <QtyInput
                 label="นับจริง oz"
                 unit="oz"
                 value={row.countedOz ?? 0}
                 onChange={(n) => set({ countedOz: n })}
+                onBlank={() => set({ countedOz: undefined })}
               />
             </div>
             {counted && (

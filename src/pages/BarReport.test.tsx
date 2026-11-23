@@ -487,6 +487,55 @@ describe('BarReport', () => {
     })
   })
 
+  it('typed negatives in Sale/Open store 0', () => {
+    renderPage()
+    type(item25.code, 'Sale oz', '-5')
+    type(item25.code, 'Open oz', '-3')
+    expect(field(item25.code, 'Sale oz').value).not.toContain('-')
+    expect(field(item25.code, 'Open oz').value).not.toContain('-')
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))
+    expect(repo.getReport(BAR, DATE)!.rows).toEqual([]) // nothing touched => no rows
+    expect(closedText(item25.code)).toBe('0 ขวด 0 oz')
+    type(item25.code, 'Sale oz', '7,5')
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))
+    expect(repo.getReport(BAR, DATE)!.rows[0]).toMatchObject({ sale: 7.5, openOz: 0 })
+  })
+
+  describe('counted fields', () => {
+    const variance = () => within(card(item25.code)).queryByTestId('variance')
+    const saved = () => repo.getReport(BAR, DATE)
+
+    it('clearing a counted value leaves no variance, no stored count and an untouched row', () => {
+      renderPage()
+      type(item25.code, 'Open ขวด', '1')
+      type(item25.code, 'นับจริง oz', '22')
+      expect(variance()).not.toBeNull()
+      type(item25.code, 'นับจริง oz', '')
+      expect(variance()).toBeNull()
+      fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))
+      const row = saved()!.rows[0]
+      expect(row.countedBtl).toBeUndefined()
+      expect(row.countedOz).toBeUndefined()
+      expect('countedOz' in row).toBe(false)
+    })
+
+    it('a row with only a cleared count is untouched', () => {
+      renderPage()
+      type(item25.code, 'นับจริง ขวด', '2')
+      expect(counter()).toBe(`กรอกแล้ว 1/${N}`)
+      type(item25.code, 'นับจริง ขวด', '')
+      expect(counter()).toBe(`กรอกแล้ว 0/${N}`)
+    })
+
+    it('typing 0 explicitly is a real count with a variance', () => {
+      renderPage()
+      type(item25.code, 'Open ขวด', '1')
+      type(item25.code, 'นับจริง oz', '0')
+      expect(variance()).not.toBeNull()
+      expect(counter()).toBe(`กรอกแล้ว 1/${N}`)
+    })
+  })
+
   describe('storage failure', () => {
     const ERR = /บันทึกไม่สำเร็จ/
     const failing = () =>

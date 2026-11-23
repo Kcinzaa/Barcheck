@@ -47,4 +47,26 @@ describe('QtyInput', () => {
     fireEvent.click(screen.getByRole('button', { name: 'ลด Qty' }))
     expect(input().value).toBe('')
   })
+
+  it('clamps typed negatives to 0 and does not show them', () => {
+    const seen: number[] = []
+    render(<Harness onValue={(n) => seen.push(n)} />)
+    fireEvent.change(input(), { target: { value: '-5' } })
+    expect(seen).toEqual([0])
+    expect(input().value).not.toContain('-')
+    fireEvent.change(input(), { target: { value: '7,5' } })
+    expect(seen[seen.length - 1]).toBe(7.5)
+    expect(input().value).toBe('7,5')
+  })
+
+  it('calls onBlank instead of onChange when the text becomes empty', () => {
+    const onChange = vi.fn()
+    const onBlank = vi.fn()
+    render(<QtyInput label="Qty" value={3} onChange={onChange} onBlank={onBlank} />)
+    fireEvent.change(input(), { target: { value: '  ' } })
+    expect(onBlank).toHaveBeenCalledTimes(1)
+    expect(onChange).not.toHaveBeenCalled()
+    fireEvent.change(input(), { target: { value: '0' } })
+    expect(onChange).toHaveBeenCalledWith(0)
+  })
 })
