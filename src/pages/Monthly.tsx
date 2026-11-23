@@ -162,7 +162,7 @@ export default function Monthly() {
                     <Fragment key={`${barId}:${month}:${r.code}`}>
                       {showCat && (
                         <tr className="m-cat">
-                          <th colSpan={7} scope="colgroup">
+                          <th colSpan={7} scope="rowgroup">
                             {r.category}
                           </th>
                         </tr>

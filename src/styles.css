@@ -173,7 +173,7 @@ a.btn {
 }
 
 input::placeholder {
-  color: #8a7d6c;
+  color: var(--muted);
 }
 
 .field {
