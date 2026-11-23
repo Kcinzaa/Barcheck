@@ -1,0 +1,318 @@
+import { act, fireEvent, render, screen, within } from '@testing-library/react'
+import { MemoryRouter, Route, Routes } from 'react-router-dom'
+import BarReport from './BarReport'
+import { ITEMS } from '../data/items'
+import { repo } from '../storage/repo'
+
+const BAR_ITEMS = ITEMS.filter((i) => i.form === 'bar')
+const N = BAR_ITEMS.length
+const item25 = BAR_ITEMS.find((i) => i.sizeOz === 25)!
+const item23 = BAR_ITEMS.find((i) => i.sizeOz === 23)!
+const BAR = 'the-cove'
+const DATE = '2026-11-23'
+
+function renderPage(barId = BAR, date = DATE) {
+  return render(
+    <MemoryRouter initialEntries={[`/bar/${barId}/${date}/report`]}>
+      <Routes>
+        <Route path="/bar/:barId/:date/report" element={<BarReport />} />
+      </Routes>
+    </MemoryRouter>,
+  )
+}
+
+const card = (code: string) => screen.getByTestId(`item-${code}`)
+const MORE = /^เพิ่มเติม/
+/** Finds a field in a card, expanding the card's secondary fields (Store/Transfer/นับจริง) if needed. */
+const field = (code: string, label: string) => {
+  const c = within(card(code))
+  const found = c.queryByLabelText(label)
+  if (found) return found as HTMLInputElement
+  fireEvent.click(c.getByRole('button', { name: MORE }))
+  return c.getByLabelText(label) as HTMLInputElement
+}
+const reportByInput = () => within(screen.getByTestId('report-head')).getByLabelText('ผู้รายงาน') as HTMLInputElement
+const searchInput = () => within(screen.getByTestId('report-sticky')).getByLabelText('ค้นหาสินค้า')
+const type = (code: string, label: string, value: string) =>
+  fireEvent.change(field(code, label), { target: { value } })
+const closedText = (code: string) => screen.getByTestId(`closed-${code}`).textContent
+const counter = () => screen.getByTestId('counter').textContent
+
+describe('BarReport', () => {
+  beforeEach(() => localStorage.clear())
+  afterEach(() => vi.useRealTimers())
+
+  it('computes closed from open + sale on a 25 oz item', () => {
+    renderPage()
+    type(item25.code, 'Open ขวด', '1')
+    type(item25.code, 'Open oz', '8')
+    type(item25.code, 'Sale oz', '10')
+    expect(closedText(item25.code)).toBe('0 ขวด 23 oz')
+  })
+
+  it('warns when sale exceeds stock', () => {
+    renderPage()
+    expect(within(card(item25.code)).queryByTestId('negative-warning')).toBeNull()
+    type(item25.code, 'Open oz', '5')
+    type(item25.code, 'Sale oz', '10')
+    const warn = within(card(item25.code)).getByTestId('negative-warning')
+    expect(warn.getAttribute('role')).toBe('alert')
+    expect(screen.getByTestId(`closed-${item25.code}`).className).toContain('negative')
+  })
+
+  it('shows variance warning when counted differs from computed', () => {
+    renderPage()
+    type(item25.code, 'Open ขวด', '1')
+    type(item25.code, 'Open oz', '8')
+    type(item25.code, 'Sale oz', '10')
+    expect(within(card(item25.code)).queryByTestId('variance')).toBeNull()
+    type(item25.code, 'นับจริง oz', '22')
+    const v = within(card(item25.code)).getByTestId('variance')
+    expect(v.getAttribute('role')).toBe('alert')
+    expect(v.textContent).toContain('−1 oz')
+  })
+
+  it('no variance warning when counted matches', () => {
+    renderPage()
+    type(item25.code, 'Open oz', '23')
+    type(item25.code, 'นับจริง oz', '23')
+    expect(within(card(item25.code)).queryByTestId('variance')).toBeNull()
+  })
+
+  it('stores comma decimals as numbers', () => {
+    renderPage()
+    type(item25.code, 'Sale oz', '7,5')
+    type(item25.code, 'Open oz', '10')
+    expect(closedText(item25.code)).toBe('0 ขวด 2.5 oz')
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))
+    const row = repo.getReport(BAR, DATE)!.rows.find((r) => r.itemCode === item25.code)!
+    expect(row.sale).toBe(7.5)
+  })
+
+  it('stores bottle+oz movements as oz', () => {
+    renderPage()
+    type(item25.code, 'Daily Store ขวด', '2')
+    type(item25.code, 'Daily Store oz', '3')
+    type(item25.code, 'Transfer In oz', '4')
+    type(item25.code, 'Transfer Out ขวด', '1')
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))
+    const row = repo.getReport(BAR, DATE)!.rows.find((r) => r.itemCode === item25.code)!
+    expect(row.dailyStore).toBe(53)
+    expect(row.transferIn).toBe(4)
+    expect(row.transferOut).toBe(25)
+    expect(closedText(item25.code)).toBe('1 ขวด 7 oz')
+  })
+
+  it('blank or invalid input never renders NaN', () => {
+    renderPage()
+    type(item25.code, 'Open oz', '')
+    type(item25.code, 'Sale oz', 'abc')
+    type(item25.code, 'นับจริง ขวด', '')
+    type(item25.code, 'Daily Store oz', '-')
+    expect(document.body.textContent).not.toContain('NaN')
+    for (const input of document.querySelectorAll('input')) {
+      expect(input.value).not.toContain('NaN')
+    }
+    expect(closedText(item25.code)).toBe('0 ขวด 0 oz')
+  })
+
+  it('normalises oz overflow in computed closed', () => {
+    renderPage()
+    type(item23.code, 'Open oz', '30')
+    expect(closedText(item23.code)).toBe('1 ขวด 7 oz')
+  })
+
+  it('stepper buttons change value and never go below 0', () => {
+    renderPage()
+    const c = within(card(item25.code))
+    fireEvent.click(c.getByRole('button', { name: 'เพิ่ม Open ขวด' }))
+    fireEvent.click(c.getByRole('button', { name: 'เพิ่ม Open ขวด' }))
+    expect(field(item25.code, 'Open ขวด').value).toBe('2')
+    fireEvent.click(c.getByRole('button', { name: 'ลด Open ขวด' }))
+    fireEvent.click(c.getByRole('button', { name: 'ลด Open ขวด' }))
+    fireEvent.click(c.getByRole('button', { name: 'ลด Open ขวด' }))
+    expect(closedText(item25.code)).toBe('0 ขวด 0 oz')
+  })
+
+  it('secondary fields are collapsed by default and toggle open', () => {
+    renderPage()
+    const c = within(card(item25.code))
+    const more = c.getByRole('button', { name: MORE })
+    expect(more.getAttribute('aria-expanded')).toBe('false')
+    expect(c.queryByLabelText('Daily Store ขวด')).toBeNull()
+    fireEvent.click(more)
+    expect(more.getAttribute('aria-expanded')).toBe('true')
+    expect(c.getByLabelText('Daily Store ขวด')).toBeTruthy()
+  })
+
+  it('clearing counted removes the variance', () => {
+    renderPage()
+    type(item25.code, 'Open oz', '10')
+    type(item25.code, 'นับจริง oz', '8')
+    expect(within(card(item25.code)).getByTestId('variance').textContent).toContain('−2 oz')
+    fireEvent.click(within(card(item25.code)).getByRole('button', { name: 'ล้างค่านับ' }))
+    expect(within(card(item25.code)).queryByTestId('variance')).toBeNull()
+  })
+
+  it('numeric inputs use decimal keypad', () => {
+    renderPage()
+    expect(field(item25.code, 'Open oz').getAttribute('inputmode')).toBe('decimal')
+    expect(field(item25.code, 'Transfer Out ขวด').getAttribute('inputmode')).toBe('decimal')
+  })
+
+  it('search filters cards by name and hides empty categories', () => {
+    renderPage()
+    const bacardi = BAR_ITEMS.filter((i) => /bacardi/i.test(i.name))
+    expect(bacardi.length).toBeGreaterThan(0)
+    fireEvent.change(searchInput(), { target: { value: 'bacardi' } })
+    const cards = screen.getAllByTestId(/^item-/)
+    expect(cards.length).toBe(bacardi.length)
+    for (const i of bacardi) expect(card(i.code)).toBeTruthy()
+    const gin = BAR_ITEMS.find((i) => i.category === 'GIN')!
+    expect(screen.queryByTestId(`item-${gin.code}`)).toBeNull()
+    expect(screen.queryByRole('heading', { name: /^GIN/ })).toBeNull()
+  })
+
+  it('category sections collapse and expand', () => {
+    renderPage()
+    const toggle = screen.getByRole('button', { name: new RegExp(`^${item25.category}`) })
+    expect(toggle.getAttribute('aria-expanded')).toBe('true')
+    fireEvent.click(toggle)
+    expect(toggle.getAttribute('aria-expanded')).toBe('false')
+    expect(screen.queryByTestId(`item-${item25.code}`)).toBeNull()
+    fireEvent.click(toggle)
+    expect(card(item25.code)).toBeTruthy()
+  })
+
+  it('counter counts only touched rows', () => {
+    renderPage()
+    expect(counter()).toBe(`กรอกแล้ว 0/${N}`)
+    type(item25.code, 'Sale oz', '3')
+    type(item25.code, 'Open oz', '4')
+    expect(counter()).toBe(`กรอกแล้ว 1/${N}`)
+    type(item25.code, 'Sale oz', '')
+    type(item25.code, 'Open oz', '0')
+    expect(counter()).toBe(`กรอกแล้ว 0/${N}`)
+  })
+
+  it('debounces draft autosave by 300 ms', () => {
+    vi.useFakeTimers()
+    renderPage()
+    type(item25.code, 'Sale oz', '4')
+    expect(repo.getReport(BAR, DATE)).toBeNull()
+    act(() => vi.advanceTimersByTime(299))
+    expect(repo.getReport(BAR, DATE)).toBeNull()
+    act(() => vi.advanceTimersByTime(1))
+    const rec = repo.getReport(BAR, DATE)!
+    expect(rec.status).toBe('draft')
+    expect(rec.rows).toHaveLength(1)
+    expect(rec.rows[0]).toMatchObject({ itemCode: item25.code, sale: 4 })
+  })
+
+  it('flushes draft on unmount and restores it on remount', () => {
+    const { unmount } = renderPage()
+    fireEvent.change(reportByInput(), { target: { value: 'Somchai' } })
+    type(item25.code, 'Open ขวด', '1')
+    type(item25.code, 'Open oz', '8')
+    type(item25.code, 'Daily Store oz', '30')
+    unmount()
+    const rec = repo.getReport(BAR, DATE)!
+    expect(rec.status).toBe('draft')
+    expect(rec.reportBy).toBe('Somchai')
+    renderPage()
+    expect(reportByInput().value).toBe('Somchai')
+    expect(field(item25.code, 'Open ขวด').value).toBe('1')
+    expect(field(item25.code, 'Open oz').value).toBe('8')
+    const more = within(card(item25.code)).getByRole('button', { name: MORE })
+    expect(more.getAttribute('aria-expanded')).toBe('true')
+    expect(field(item25.code, 'Daily Store ขวด').value).toBe('1')
+    expect(field(item25.code, 'Daily Store oz').value).toBe('5')
+    expect(counter()).toBe(`กรอกแล้ว 1/${N}`)
+  })
+
+  it('save stores status saved and shows confirmation', () => {
+    renderPage()
+    type(item25.code, 'Sale oz', '2')
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))
+    expect(repo.getReport(BAR, DATE)!.status).toBe('saved')
+    expect(screen.getByRole('status').textContent).toContain('บันทึกแล้ว')
+  })
+
+  it('opening a saved record without editing does not write', () => {
+    repo.saveReport({
+      barId: BAR,
+      date: DATE,
+      reportBy: 'A',
+      status: 'saved',
+      rows: [{ itemCode: item25.code, openBtl: 0, openOz: 0, dailyStore: 0, transferIn: 0, transferOut: 0, sale: 3, remark: '' }],
+    })
+    const spy = vi.spyOn(repo, 'saveReport')
+    const { unmount } = renderPage()
+    unmount()
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+    expect(repo.getReport(BAR, DATE)!.status).toBe('saved')
+  })
+
+  it('editing a saved record makes it draft again', () => {
+    repo.saveReport({ barId: BAR, date: DATE, reportBy: '', status: 'saved', rows: [] })
+    const { unmount } = renderPage()
+    type(item25.code, 'Sale oz', '1')
+    unmount()
+    expect(repo.getReport(BAR, DATE)!.status).toBe('draft')
+  })
+
+  it('ignores unknown and malformed stored rows without crashing', () => {
+    localStorage.setItem(
+      `barcheck:report:${BAR}:${DATE}`,
+      JSON.stringify({
+        barId: BAR,
+        date: DATE,
+        reportBy: 'x',
+        status: 'draft',
+        rows: [
+          { itemCode: 'GONE-999', sale: 5 },
+          { itemCode: item25.code, openOz: 'bad', sale: 2 },
+        ],
+      }),
+    )
+    renderPage()
+    expect(closedText(item25.code)).toBe('0 ขวด -2 oz')
+    expect(document.body.textContent).not.toContain('NaN')
+    expect(counter()).toBe(`กรอกแล้ว 1/${N}`)
+    expect(screen.queryByTestId('item-GONE-999')).toBeNull()
+    fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))
+    const codes = repo.getReport(BAR, DATE)!.rows.map((r) => r.itemCode)
+    expect(codes).toContain('GONE-999') // not shown, but never silently dropped
+  })
+
+  it('shows header with bar name, date and links', () => {
+    renderPage()
+    expect(screen.getByRole('heading', { name: /The Cove/ })).toBeTruthy()
+    expect(screen.getByText(DATE)).toBeTruthy()
+    expect(screen.getByRole('link', { name: '← หน้าหลัก' }).getAttribute('href')).toBe('/')
+    expect(screen.getByRole('link', { name: /ใบเบิก/ }).getAttribute('href')).toBe(
+      `/bar/${BAR}/${DATE}/requisition`,
+    )
+  })
+
+  it('unknown bar shows a friendly message', () => {
+    const spy = vi.spyOn(repo, 'saveReport')
+    renderPage('nope', DATE)
+    expect(screen.getByText(/ไม่พบบาร์/)).toBeTruthy()
+    expect(screen.getByRole('link', { name: '← หน้าหลัก' })).toBeTruthy()
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+  })
+
+  it('invalid date shows a friendly message', () => {
+    const spy = vi.spyOn(repo, 'saveReport')
+    const { unmount } = renderPage(BAR, '2026-13-45')
+    expect(screen.getByText(/วันที่ไม่ถูกต้อง/)).toBeTruthy()
+    unmount()
+    renderPage(BAR, 'yesterday')
+    expect(screen.getByText(/วันที่ไม่ถูกต้อง/)).toBeTruthy()
+    expect(spy).not.toHaveBeenCalled()
+    spy.mockRestore()
+  })
+})
