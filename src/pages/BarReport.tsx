@@ -8,6 +8,7 @@ import { isTouched } from '../domain/calc'
 import { carryOpen } from '../domain/carry'
 import { emptyRow, sanitizeRow } from '../domain/row'
 import type { BarReportRow, Item } from '../domain/types'
+import { SAVE_ERROR } from '../hooks/useAutosave'
 import { repo } from '../storage/repo'
 import { IconCheck, Wave } from '../components/Glyphs'
 
@@ -78,6 +79,7 @@ function ReportForm({ bar, date }: { bar: Bar; date: string }) {
   const [reportBy, setReportBy] = useState(initial.reportBy)
   const [query, setQuery] = useState('')
   const [justSaved, setJustSaved] = useState(false)
+  const [saveFailed, setSaveFailed] = useState(false)
 
   const latest = useRef({ rows, reportBy })
   latest.current = { rows, reportBy }
@@ -85,10 +87,10 @@ function ReportForm({ bar, date }: { bar: Bar; date: string }) {
   const timer = useRef<ReturnType<typeof setTimeout> | null>(null)
 
   const write = useCallback(
-    (status: 'draft' | 'saved') => {
+    (status: 'draft' | 'saved'): boolean => {
       const { rows: r, reportBy: by } = latest.current
       const touched = BAR_ITEMS.map((i) => r[i.code]).filter(isTouched)
-      repo.saveReport({ barId: bar.id, date, reportBy: by, status, rows: [...touched, ...initial.unknown] })
+      return repo.saveReport({ barId: bar.id, date, reportBy: by, status, rows: [...touched, ...initial.unknown] })
     },
     [bar.id, date, initial.unknown],
   )
@@ -103,7 +105,9 @@ function ReportForm({ bar, date }: { bar: Bar; date: string }) {
     clearTimer()
     if (!dirty.current) return
     dirty.current = false
-    write('draft')
+    const ok = write('draft')
+    if (!ok) dirty.current = true // retry on the next edit, save or flush; no timer loop
+    setSaveFailed(!ok)
   }, [write])
 
   // Debounced draft autosave; only after a real edit, so opening the page never writes.
@@ -136,6 +140,7 @@ function ReportForm({ bar, date }: { bar: Bar; date: string }) {
   const onRowChange = useCallback((code: string, patch: RowPatch) => {
     dirty.current = true
     setJustSaved(false)
+    setSaveFailed(false)
     setRows((prev) => {
       const next = { ...prev[code], ...patch }
       if (next.openFrom === undefined) delete next.openFrom
@@ -145,9 +150,10 @@ function ReportForm({ bar, date }: { bar: Bar; date: string }) {
 
   const onSave = () => {
     clearTimer()
-    dirty.current = false
-    write('saved')
-    setJustSaved(true)
+    const ok = write('saved')
+    dirty.current = !ok
+    setJustSaved(ok)
+    setSaveFailed(!ok)
   }
 
   const filled = useMemo(() => BAR_ITEMS.filter((i) => isTouched(rows[i.code])).length, [rows])
@@ -182,6 +188,7 @@ function ReportForm({ bar, date }: { bar: Bar; date: string }) {
             onChange={(e) => {
               dirty.current = true
               setJustSaved(false)
+              setSaveFailed(false)
               setReportBy(e.target.value)
             }}
           />
@@ -215,9 +222,15 @@ function ReportForm({ bar, date }: { bar: Bar; date: string }) {
       {visible.length === 0 && <p className="notice">ไม่พบสินค้า "{query}"</p>}
 
       <div className="report-footer">
-        <span role="status" className="report-saved">
-          {justSaved ? 'บันทึกแล้ว ✓' : ''}
-        </span>
+        {saveFailed ? (
+          <span role="alert" className="report-saved report-save-error">
+            {SAVE_ERROR}
+          </span>
+        ) : (
+          <span role="status" className="report-saved">
+            {justSaved ? 'บันทึกแล้ว ✓' : ''}
+          </span>
+        )}
         <button type="button" className="btn-primary btn-save" onClick={onSave}>
           <IconCheck />
           บันทึก

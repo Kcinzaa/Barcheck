@@ -25,9 +25,11 @@ type FormStatus = 'none' | 'draft' | 'saved'
 
 export interface Repo {
   getReport(barId: string, date: string): ReportRecord | null
-  saveReport(r: ReportRecord): void
+  /** Returns true only if the value was actually written. */
+  saveReport(r: ReportRecord): boolean
   getReq(barId: string, date: string): ReqRecord | null
-  saveReq(r: ReqRecord): void
+  /** Returns true only if the value was actually written. */
+  saveReq(r: ReqRecord): boolean
   listReports(barId: string, month: string): ReportRecord[]
   /** Per itemCode, the latest touched (sanitized) row from a report dated strictly before `date`. */
   latestTouchedBefore(barId: string, date: string): Record<string, { date: string; row: BarReportRow }>
@@ -85,11 +87,13 @@ function readReq(barId: string, date: string): ReqRecord | null {
   return isReq(v, barId, date) ? v : null
 }
 
-function write(key: string, value: unknown): void {
+function write(key: string, value: unknown): boolean {
   try {
     localStorage.setItem(key, JSON.stringify(value))
+    return true
   } catch {
-    // storage unavailable or full: saving is best-effort
+    // storage unavailable or full: the caller must tell the user
+    return false
   }
 }
 

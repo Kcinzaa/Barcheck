@@ -1377,3 +1377,7 @@ tr:has(> .m-item .m-toggle[aria-expanded="true"]) > * {
     min-width: 260px;
   }
 }
+
+.report-save-error {
+  color: var(--danger);
+}

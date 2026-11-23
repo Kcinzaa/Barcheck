@@ -5,7 +5,7 @@ import QtyInput from '../components/QtyInput'
 import { BARS, type Bar } from '../data/bars'
 import { ITEMS } from '../data/items'
 import type { Item } from '../domain/types'
-import { useAutosave } from '../hooks/useAutosave'
+import { SAVE_ERROR, useAutosave } from '../hooks/useAutosave'
 import { isValidDate } from '../lib/dateParam'
 import { repo } from '../storage/repo'
 import { IconCheck, Wave } from '../components/Glyphs'
@@ -75,18 +75,18 @@ function ReqForm({ bar, date }: { bar: Bar; date: string }) {
   const snapshot = useMemo(() => ({ qtys, people }), [qtys, people])
 
   const write = useCallback(
-    (status: 'draft' | 'saved') => {
+    (status: 'draft' | 'saved'): boolean => {
       const { qtys: q, people: p } = latest.current
       const rows: Row[] = REQ_ITEMS.filter((i) => (q[i.code] ?? 0) > 0).map((i) => ({
         itemCode: i.code,
         qty: q[i.code],
       }))
-      repo.saveReq({ barId: bar.id, date, ...p, status, rows: [...rows, ...initial.unknown] })
+      return repo.saveReq({ barId: bar.id, date, ...p, status, rows: [...rows, ...initial.unknown] })
     },
     [bar.id, date, initial.unknown],
   )
 
-  const { markDirty, saveNow, justSaved } = useAutosave(write, snapshot)
+  const { markDirty, saveNow, justSaved, saveFailed } = useAutosave(write, snapshot)
 
   const setQty = useCallback(
     (code: string, n: number) => {
@@ -176,9 +176,15 @@ function ReqForm({ bar, date }: { bar: Bar; date: string }) {
       {visible.length === 0 && <p className="notice">ไม่พบสินค้า "{query}"</p>}
 
       <div className="report-footer">
-        <span role="status" className="report-saved">
-          {justSaved ? 'บันทึกแล้ว ✓' : ''}
-        </span>
+        {saveFailed ? (
+          <span role="alert" className="report-saved report-save-error">
+            {SAVE_ERROR}
+          </span>
+        ) : (
+          <span role="status" className="report-saved">
+            {justSaved ? 'บันทึกแล้ว ✓' : ''}
+          </span>
+        )}
         <button type="button" className="btn-primary btn-save" onClick={saveNow}>
           <IconCheck />
           บันทึก

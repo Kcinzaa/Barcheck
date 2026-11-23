@@ -208,3 +208,18 @@ describe('repo.latestTouchedBefore', () => {
     expect(repo.latestTouchedBefore('pf', '2026-11-02')).toEqual({})
   })
 })
+
+describe('repo write result', () => {
+  it('returns true when the value is written', () => {
+    expect(repo.saveReport(report('pf', '2026-11-01'))).toBe(true)
+    expect(repo.saveReq(req('pf', '2026-11-01'))).toBe(true)
+  })
+
+  it('returns false when setItem throws', () => {
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('full', 'QuotaExceededError')
+    })
+    expect(repo.saveReport(report('pf', '2026-11-01'))).toBe(false)
+    expect(repo.saveReq(req('pf', '2026-11-01'))).toBe(false)
+  })
+})

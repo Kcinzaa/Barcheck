@@ -486,4 +486,48 @@ describe('BarReport', () => {
       expect(note(item25.code)?.textContent).toBe(NOTE)
     })
   })
+
+  describe('storage failure', () => {
+    const ERR = /บันทึกไม่สำเร็จ/
+    const failing = () =>
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new DOMException('full', 'QuotaExceededError')
+      })
+    afterEach(() => vi.restoreAllMocks())
+
+    it('explicit save shows an alert, not the saved tick', () => {
+      failing()
+      renderPage()
+      type(item25.code, 'Sale oz', '4')
+      fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))
+      expect(screen.getByText(ERR).getAttribute('role')).toBe('alert')
+      expect(document.body.textContent).not.toContain('บันทึกแล้ว')
+    })
+
+    it('a failed autosave stays dirty and the next edit writes the latest state', () => {
+      vi.useFakeTimers()
+      const spy = failing()
+      renderPage()
+      type(item25.code, 'Sale oz', '4')
+      act(() => vi.advanceTimersByTime(300))
+      expect(document.body.textContent).toMatch(ERR)
+      expect(repo.getReport(BAR, DATE)).toBeNull()
+      spy.mockRestore()
+      type(item25.code, 'Sale oz', '5')
+      expect(document.body.textContent).not.toMatch(ERR)
+      act(() => vi.advanceTimersByTime(300))
+      expect(repo.getReport(BAR, DATE)!.rows[0]).toMatchObject({ itemCode: item25.code, sale: 5 })
+    })
+
+    it('a failed autosave is retried on unmount once storage works', () => {
+      vi.useFakeTimers()
+      const spy = failing()
+      const { unmount } = renderPage()
+      type(item25.code, 'Sale oz', '4')
+      act(() => vi.advanceTimersByTime(300))
+      spy.mockRestore()
+      unmount()
+      expect(repo.getReport(BAR, DATE)!.rows[0]).toMatchObject({ itemCode: item25.code, sale: 4 })
+    })
+  })
 })

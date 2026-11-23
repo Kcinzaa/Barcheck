@@ -162,4 +162,50 @@ describe('Requisition', () => {
     expect(screen.getByRole('link', { name: '← หน้าหลัก' }).getAttribute('href')).toBe('/')
     expect(screen.getByRole('link', { name: /Bar Report/ }).getAttribute('href')).toBe(`/bar/${BAR}/${DATE}/report`)
   })
+
+  describe('storage failure', () => {
+    const ERR = /บันทึกไม่สำเร็จ/
+    const failing = () =>
+      vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+        throw new DOMException('full', 'QuotaExceededError')
+      })
+
+    it('explicit save shows an alert, not the saved tick', () => {
+      failing()
+      renderPage()
+      search('Campari')
+      typeQty(campari.code, '3')
+      fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))
+      expect(screen.getByRole('alert').textContent).toMatch(ERR)
+      expect(document.body.textContent).not.toContain('บันทึกแล้ว')
+    })
+
+    it('a failed autosave stays dirty and the next edit writes the latest state', () => {
+      vi.useFakeTimers()
+      const spy = failing()
+      renderPage()
+      search('Campari')
+      typeQty(campari.code, '3')
+      act(() => vi.advanceTimersByTime(300))
+      expect(screen.getByRole('alert').textContent).toMatch(ERR)
+      expect(repo.getReq(BAR, DATE)).toBeNull()
+      spy.mockRestore()
+      typeQty(campari.code, '4')
+      expect(screen.queryByRole('alert')).toBeNull()
+      act(() => vi.advanceTimersByTime(300))
+      expect(repo.getReq(BAR, DATE)!.rows).toEqual([{ itemCode: campari.code, qty: 4 }])
+    })
+
+    it('a failed autosave is retried on unmount once storage works', () => {
+      vi.useFakeTimers()
+      const spy = failing()
+      const { unmount } = renderPage()
+      search('Campari')
+      typeQty(campari.code, '3')
+      act(() => vi.advanceTimersByTime(300))
+      spy.mockRestore()
+      unmount()
+      expect(repo.getReq(BAR, DATE)!.rows).toEqual([{ itemCode: campari.code, qty: 3 }])
+    })
+  })
 })
