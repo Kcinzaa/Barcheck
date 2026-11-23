@@ -40,6 +40,15 @@ describe('calcRow', () => {
   });
 });
 
+describe('calcRow totals', () => {
+  it('total1 includes transferIn, total2 subtracts transferOut', () => {
+    const r = calcRow({ ...base, openOz: 33, dailyStore: 10, transferIn: 5, transferOut: 8, sale: 10 }, 25);
+    expect(r.total1).toBe(48);
+    expect(r.total2).toBe(40);
+    expect(r.closed).toBe(30);
+  });
+});
+
 describe('isTouched', () => {
   it('false for zero row', () => expect(isTouched(base)).toBe(false));
   it('true for remark only', () => expect(isTouched({ ...base, remark: 'x' })).toBe(true));

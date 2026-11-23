@@ -11,8 +11,8 @@ export function calcRow(
   sizeOz: number,
 ): { total1: number; total2: number; closed: number; variance: number | null; negative: boolean } {
   const open = toOz(row.openBtl, row.openOz, sizeOz);
-  const total1 = round1(open + row.dailyStore);
-  const total2 = round1(total1 + row.transferIn - row.transferOut);
+  const total1 = round1(open + row.dailyStore + row.transferIn);
+  const total2 = round1(total1 - row.transferOut);
   const closed = round1(total2 - row.sale);
   const hasCounted = row.countedBtl !== undefined || row.countedOz !== undefined;
   const variance = hasCounted
