@@ -217,3 +217,9 @@ scripts/build-seed.py      # builds items.json from the Excel files + PDF transc
 - [ ] **Step 3: Fix** any issues in `styles.css`.
 - [ ] **Step 4: Run** `npx vitest run && npm run build` → Expected: all PASS.
 - [ ] **Step 5: Commit** `style: responsive polish`
+
+---
+
+### Task 11 (added after user feedback): Katathani visual redesign
+
+User asked (after seeing screenshots) for a prettier, more luxurious look fitting Katathani Phuket Beach Resort, easier to use. Brand cues were taken from the resort's public website (theme-color `#b69e7a`; sand `#d0bda0`/`#d0b080`; cream `#fbf6ed`/`#f4f2ee`; charcoal `#1c1b1a`/`#403e3b`; burgundy `#883832`/`#8B3B32`; sun orange `#F7981D` from the logo; fonts Lora + Assistant). CSS/markup-class changes only: no logic changes, all existing tests pass unmodified. Logo is bundled at `public/logo.webp`.
