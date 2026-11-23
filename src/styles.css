@@ -1,0 +1,51 @@
+:root {
+  --color-bg: #f7f5f2;
+  --color-surface: #ffffff;
+  --color-text: #1f2328;
+  --color-muted: #6b7280;
+  --color-primary: #7a3e1d;
+  --color-primary-contrast: #ffffff;
+  --color-border: #d9d4cc;
+  --color-danger: #b42318;
+  --color-success: #1a7f37;
+
+  --space-1: 4px;
+  --space-2: 8px;
+  --space-3: 12px;
+  --space-4: 16px;
+  --space-5: 24px;
+  --space-6: 32px;
+
+  --radius: 8px;
+  --touch-min: 44px;
+
+  --font-sans: "Sarabun", "Noto Sans Thai", system-ui, -apple-system, "Segoe UI", sans-serif;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--color-bg);
+  color: var(--color-text);
+  font-family: var(--font-sans);
+  font-size: 16px;
+  line-height: 1.5;
+}
+
+.page {
+  max-width: 720px;
+  margin: 0 auto;
+  padding: var(--space-4);
+}
+
+button,
+input,
+select,
+a.btn {
+  min-height: var(--touch-min);
+  font-family: inherit;
+  font-size: 1rem;
+}
