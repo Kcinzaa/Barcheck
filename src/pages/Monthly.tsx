@@ -5,6 +5,7 @@ import { ITEMS } from '../data/items'
 import { fmtBtlOz, summarize, type SummaryRow } from '../domain/summary'
 import { exportMonthly } from '../export/xlsx'
 import { repo } from '../storage/repo'
+import { IconDownload, Wave } from '../components/Glyphs'
 
 const BAR_ITEMS = ITEMS.filter((i) => i.form === 'bar')
 
@@ -37,7 +38,7 @@ function ItemRows({ r }: { r: SummaryRow }) {
             aria-controls={`daily-${r.code}`}
             onClick={() => setOpen((o) => !o)}
           >
-            <span aria-hidden="true">{open ? '▾' : '▸'}</span>
+            <span className="chev" aria-hidden="true">{open ? '▾' : '▸'}</span>
             <span className="m-name">{r.name}</span>
           </button>
         </th>
@@ -89,13 +90,16 @@ export default function Monthly() {
 
   let lastCat = ''
   return (
-    <main className="page" data-testid="monthly">
+    <main className="page page-monthly" data-testid="monthly">
       <p>
         <Link className="btn btn-plain m-back" to="/">
           ← หน้าแรก
         </Link>
       </p>
-      <h1>สรุปรายเดือน</h1>
+      <header className="m-head">
+        <h1>สรุปรายเดือน</h1>
+        <Wave />
+      </header>
 
       <div className="m-controls">
         <label className="field">
@@ -124,11 +128,12 @@ export default function Monthly() {
         disabled={rows.length === 0}
         onClick={() => exportMonthly(bar.name, month, rows)}
       >
+        <IconDownload />
         Export Excel
       </button>
 
       {rows.length === 0 ? (
-        <p className="notice">ยังไม่มีข้อมูลเดือนนี้</p>
+        <p className="notice notice-empty">ยังไม่มีข้อมูลเดือนนี้</p>
       ) : (
         <>
           <div className="m-notes">

@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type CSSProperties } from 'react'
 import { Link, useParams } from 'react-router-dom'
 import CategorySection from '../components/CategorySection'
 import ItemCard, { type RowPatch } from '../components/ItemCard'
@@ -7,6 +7,7 @@ import { ITEMS } from '../data/items'
 import { isTouched } from '../domain/calc'
 import type { BarReportRow, Item } from '../domain/types'
 import { repo } from '../storage/repo'
+import { IconCheck, Wave } from '../components/Glyphs'
 
 const BAR_ITEMS = ITEMS.filter((i) => i.form === 'bar')
 const BAR_CODES = new Set(BAR_ITEMS.map((i) => i.code))
@@ -188,6 +189,7 @@ function ReportForm({ bar, date }: { bar: Bar; date: string }) {
       <header className="report-head" data-testid="report-head">
         <h1>Bar Report · {bar.name}</h1>
         <time dateTime={date}>{date}</time>
+        <Wave />
         <label className="field">
           <span>ผู้รายงาน</span>
           <input
@@ -202,7 +204,11 @@ function ReportForm({ bar, date }: { bar: Bar; date: string }) {
         </label>
       </header>
 
-      <div className="report-sticky" data-testid="report-sticky">
+      <div
+        className="report-sticky has-progress"
+        data-testid="report-sticky"
+        style={{ '--progress': `${(filled / BAR_ITEMS.length) * 100}%` } as CSSProperties}
+      >
         <input
           type="search"
           aria-label="ค้นหาสินค้า"
@@ -228,7 +234,8 @@ function ReportForm({ bar, date }: { bar: Bar; date: string }) {
         <span role="status" className="report-saved">
           {justSaved ? 'บันทึกแล้ว ✓' : ''}
         </span>
-        <button type="button" className="btn-primary" onClick={onSave}>
+        <button type="button" className="btn-primary btn-save" onClick={onSave}>
+          <IconCheck />
           บันทึก
         </button>
       </div>

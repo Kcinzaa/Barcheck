@@ -8,6 +8,7 @@ import type { Item } from '../domain/types'
 import { useAutosave } from '../hooks/useAutosave'
 import { isValidDate } from '../lib/dateParam'
 import { repo } from '../storage/repo'
+import { IconCheck, Wave } from '../components/Glyphs'
 
 const REQ_ITEMS = ITEMS.filter((i) => i.form === 'requisition')
 const REQ_CODES = new Set(REQ_ITEMS.map((i) => i.code))
@@ -124,6 +125,7 @@ function ReqForm({ bar, date }: { bar: Bar; date: string }) {
       <header className="report-head">
         <h1>ใบเบิกสินค้า · {bar.name}</h1>
         <time dateTime={date}>{date}</time>
+        <Wave />
         <div className="req-people">
           <label className="field">
             <span>ผู้ขอเบิก</span>
@@ -177,7 +179,8 @@ function ReqForm({ bar, date }: { bar: Bar; date: string }) {
         <span role="status" className="report-saved">
           {justSaved ? 'บันทึกแล้ว ✓' : ''}
         </span>
-        <button type="button" className="btn-primary" onClick={saveNow}>
+        <button type="button" className="btn-primary btn-save" onClick={saveNow}>
+          <IconCheck />
           บันทึก
         </button>
       </div>

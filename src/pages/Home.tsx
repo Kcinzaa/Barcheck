@@ -2,6 +2,9 @@ import { useState } from 'react'
 import { Link } from 'react-router-dom'
 import { BARS } from '../data/bars'
 import { repo } from '../storage/repo'
+import { IconCalendar, IconReport, IconRequisition, Wave } from '../components/Glyphs'
+
+const LOGO = `${import.meta.env.BASE_URL}logo.webp`
 
 type FormStatus = 'none' | 'draft' | 'saved'
 
@@ -11,11 +14,10 @@ function localToday(): string {
   return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`
 }
 
-const LABEL: Record<FormStatus, string> = { none: '', draft: 'ร่าง', saved: 'บันทึกแล้ว' }
+const LABEL: Record<FormStatus, string> = { none: 'ยังไม่กรอก', draft: 'ร่าง', saved: 'บันทึกแล้ว' }
 const RANK: Record<FormStatus, number> = { none: 0, draft: 1, saved: 2 }
 
 function Badge({ status }: { status: FormStatus }) {
-  if (status === 'none') return null
   return <span className={`badge badge-${status}`}>{LABEL[status]}</span>
 }
 
@@ -27,10 +29,14 @@ export default function Home() {
   const selected = barId ? statusOf(barId) : null
 
   return (
-    <main className="page" data-testid="home">
-      <h1>Barcheck</h1>
+    <main className="page page-home" data-testid="home">
+      <header className="brand">
+        <img className="brand-logo" src={LOGO} alt="Katathani Phuket Beach Resort" width={480} height={474} />
+        <h1 className="brand-title">Barcheck</h1>
+        <Wave className="wave brand-wave" />
+      </header>
 
-      <label className="field">
+      <label className="field field-date">
         <span>วันที่</span>
         <input type="date" value={date} onChange={(e) => e.target.value && setDate(e.target.value)} />
       </label>
@@ -47,7 +53,7 @@ export default function Home() {
               aria-pressed={barId === b.id}
               onClick={() => setBarId(b.id)}
             >
-              <span>{b.name}</span>
+              <span className="bar-name">{b.name}</span>
               <Badge status={top} />
             </button>
           )
@@ -56,19 +62,22 @@ export default function Home() {
 
       {barId && selected && (
         <div className="form-links">
-          <Link className="btn" to={`/bar/${barId}/${date}/report`}>
-            <span>Bar Report</span>
+          <Link className="btn btn-tile" to={`/bar/${barId}/${date}/report`}>
+            <IconReport />
+            <span className="tile-label">Bar Report</span>
             <Badge status={selected.report} />
           </Link>
-          <Link className="btn" to={`/bar/${barId}/${date}/requisition`}>
-            <span>ใบเบิก</span>
+          <Link className="btn btn-tile" to={`/bar/${barId}/${date}/requisition`}>
+            <IconRequisition />
+            <span className="tile-label">ใบเบิก</span>
             <Badge status={selected.req} />
           </Link>
         </div>
       )}
 
-      <p>
-        <Link className="btn btn-plain" to="/monthly">
+      <p className="home-monthly">
+        <Link className="btn btn-plain btn-monthly" to="/monthly">
+          <IconCalendar />
           สรุปรายเดือน
         </Link>
       </p>

@@ -88,19 +88,19 @@ function ItemCard({ item, row, onChange }: Props) {
         </div>
       </fieldset>
 
-      <div className="ic-closed">
+      <div className={negative ? 'ic-closed is-negative' : 'ic-closed'}>
         <span>Closed</span>
         <strong data-testid={`closed-${code}`} className={negative ? 'negative' : undefined}>
           {fmtBtlOz(closed, size)}
         </strong>
       </div>
       {negative && (
-        <p className="ic-warn" role="alert" data-testid="negative-warning">
+        <p className="ic-warn ic-warn-negative" role="alert" data-testid="negative-warning">
           ยอดขายเกินสต็อก — ตรวจสอบตัวเลข
         </p>
       )}
       {variance !== null && variance !== 0 && (
-        <p className="ic-warn" role="alert" data-testid="variance">
+        <p className="ic-warn ic-warn-variance" role="alert" data-testid="variance">
           ส่วนต่าง {fmtSigned(variance)} oz (นับจริง − คำนวณ)
         </p>
       )}

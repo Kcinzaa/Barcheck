@@ -1,4 +1,4 @@
-// Responsive check + screenshots for Barcheck (Task 10).
+// Responsive check + screenshots for Barcheck (Task 10; Task 11 redesign).
 //
 // Usage:
 //   npx vite --port 5199 --host 127.0.0.1 &      # start the dev server first
@@ -6,7 +6,7 @@
 //
 // outDir defaults to os.tmpdir(); baseUrl defaults to http://127.0.0.1:5199.
 // Writes PNGs to outDir (never inside the repo) and prints a JSON report of
-// layout checks at 390px: horizontal page scroll, touch targets < 44px,
+// layout checks at 390px (plus page scrollWidth at 320px under "width320"): horizontal page scroll, touch targets < 44px,
 // elements overflowing the viewport, item names that do not wrap, and the
 // fixed save bar covering the last row.
 import { createRequire } from 'node:module'
@@ -170,6 +170,7 @@ function auditPage() {
 
 async function shot(page, name) {
   const file = path.join(outDir, `${name}.png`)
+  await page.waitForTimeout(250) // let ≤200 ms state transitions (chevrons, progress) settle
   await page.screenshot({ path: file })
   console.error('wrote', file)
 }
@@ -255,6 +256,25 @@ for (const [kind, opts] of Object.entries(contexts)) {
   await check('monthly-empty')
   await shot(page, `${kind}-monthly-empty`)
 
+  await ctx.close()
+}
+// Narrowest phones: no horizontal page scroll at 320px on any screen.
+{
+  const ctx = await browser.newContext({ ...contexts.mobile, viewport: { width: 320, height: 640 } })
+  const page = await ctx.newPage()
+  await page.goto(base + '/')
+  await page.evaluate((d) => {
+    localStorage.clear()
+    for (const [k, v] of Object.entries(d)) localStorage.setItem(k, JSON.stringify(v))
+  }, seed)
+  const w320 = {}
+  for (const route of ['/', `/bar/the-cove/${today}/report`, `/bar/the-cove/${today}/requisition`, '/monthly']) {
+    await page.goto(base + route)
+    await page.waitForLoadState('networkidle').catch(() => {})
+    if (route === '/') await page.getByRole('button', { name: /The Cove/ }).click()
+    w320[route] = await page.evaluate(() => document.documentElement.scrollWidth)
+  }
+  audit.width320 = w320
   await ctx.close()
 }
 await browser.close()

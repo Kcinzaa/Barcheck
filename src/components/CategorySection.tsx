@@ -25,10 +25,15 @@ export default function CategorySection({ title, count, forceOpen = false, child
           disabled={forceOpen}
           onClick={() => setOpen((o) => !o)}
         >
-          <span>
-            {title} ({count})
+          <span className="cat-title">
+            {title}{' '}
+            <span className="cat-count">
+              <span className="vh">(</span>
+              {count}
+              <span className="vh">)</span>
+            </span>
           </span>
-          <span aria-hidden="true">{expanded ? '▾' : '▸'}</span>
+          <span className="chev" aria-hidden="true">{expanded ? '▾' : '▸'}</span>
         </button>
       </h2>
       {expanded && (
