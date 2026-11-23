@@ -11,6 +11,7 @@ const rows: SummaryRow[] = [
     totalIn: 30,
     totalOut: 4,
     totalSale: 30.3,
+    avgDailySale: 15.2,
     lastClosed: 57.5,
     dailyRows: [
       { date: '2026-11-01', closed: 66.9, sale: 10.1 },
@@ -26,6 +27,7 @@ const rows: SummaryRow[] = [
     totalIn: 0,
     totalOut: 0,
     totalSale: 9,
+    avgDailySale: 4.5,
     lastClosed: -9,
     dailyRows: [{ date: '2026-11-02', closed: -9, sale: 9 }],
   },
@@ -45,6 +47,10 @@ describe('toSheets', () => {
     expect(r[col(/^Out/)]).toBe(4)
     expect(r[col(/^Sale/)]).toBe(30.3)
     expect(r[col(/^Closed \(oz\)/)]).toBe(57.5)
+    expect(header[col(/^Sale/) + 1]).toBe('ขายเฉลี่ย/วัน (oz)')
+    expect(r[col(/^Sale/) + 1]).toBe(15.2)
+    expect(typeof r[col(/^Sale/) + 1]).toBe('number')
+    expect(summary[2][col(/^Sale/) + 1]).toBe(4.5)
     expect(r[col(/^Closed bottles/)]).toBe(2)
     expect(r[col(/^Closed \+oz/)]).toBe(7.5)
     for (const i of [col(/^Days/), col(/^In/), col(/^Out/), col(/^Sale/), col(/^Closed/)]) {

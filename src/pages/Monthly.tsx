@@ -48,11 +48,12 @@ function ItemRows({ r }: { r: SummaryRow }) {
         <Qty oz={r.totalIn} sizeOz={r.sizeOz} testId="in" />
         <Qty oz={r.totalOut} sizeOz={r.sizeOz} testId="out" />
         <Qty oz={r.totalSale} sizeOz={r.sizeOz} testId="sale" />
+        <Qty oz={r.avgDailySale} sizeOz={r.sizeOz} testId="avg" />
         <Qty oz={r.lastClosed} sizeOz={r.sizeOz} testId="closed" />
       </tr>
       {open && (
         <tr className="m-daily-row">
-          <td colSpan={6}>
+          <td colSpan={7}>
             <table className="m-daily" id={`daily-${r.code}`} data-testid={`daily-${r.code}`}>
               <thead>
                 <tr>
@@ -149,6 +150,7 @@ export default function Monthly() {
                   <th scope="col">รับเข้า</th>
                   <th scope="col">โอนออก</th>
                   <th scope="col">ขาย</th>
+                  <th scope="col">ขายเฉลี่ย/วัน</th>
                   <th scope="col">คงเหลือล่าสุด</th>
                 </tr>
               </thead>
@@ -160,7 +162,7 @@ export default function Monthly() {
                     <Fragment key={`${barId}:${month}:${r.code}`}>
                       {showCat && (
                         <tr className="m-cat">
-                          <th colSpan={6} scope="colgroup">
+                          <th colSpan={7} scope="colgroup">
                             {r.category}
                           </th>
                         </tr>

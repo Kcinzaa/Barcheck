@@ -137,4 +137,15 @@ describe('Monthly', () => {
     fireEvent.change(monthInput(), { target: { value: '' } })
     expect(monthInput().value).toBe(M)
   })
+
+  it('shows the average daily sale column over all recorded days', () => {
+    seed(BAR, `${M}-01`, [row(item25.code, { openBtl: 2, sale: 30 })])
+    seed(BAR, `${M}-02`, [row(item25.code)])
+    seed(BAR, `${M}-03`, [row(item23.code, { openBtl: 1, sale: 1 })], 'draft')
+    renderPage()
+    expect(screen.getByRole('columnheader', { name: 'ขายเฉลี่ย/วัน' })).toBeTruthy()
+    const avg = within(screen.getByTestId(`sum-${item25.code}`)).getByTestId('avg')
+    expect(avg.textContent).toContain('0 ขวด 10 oz')
+    expect(avg.textContent).toContain('10 oz')
+  })
 })

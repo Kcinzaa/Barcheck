@@ -103,4 +103,61 @@ describe('summarize', () => {
     const out = summarize([rec('2026-11-01', [row('B1', { sale: 1 }), row('A2', { sale: 1 }), row('A1', { sale: 1 })])], items)
     expect(out.map((s) => s.code)).toEqual(['A1', 'A2', 'B1'])
   })
+
+  describe('avgDailySale', () => {
+    it('divides total sale by the recorded days, untouched days included', () => {
+      const out = summarize(
+        [
+          rec('2026-11-01', [row(item25.code, { openBtl: 2, sale: 30 })]),
+          rec('2026-11-02', [row(item25.code)]), // untouched this day
+          rec('2026-11-03', []),
+        ],
+        BAR_ITEMS,
+      )
+      expect(out[0].days).toBe(1)
+      expect(out[0].avgDailySale).toBe(10)
+    })
+
+    it('counts draft days and distinct dates only', () => {
+      const out = summarize(
+        [
+          rec('2026-11-01', [row(item25.code, { openBtl: 2, sale: 20 })]),
+          rec('2026-11-02', [], 'draft'),
+          { ...rec('2026-11-02', [row(item25.code)]), barId: 'other' },
+        ],
+        BAR_ITEMS,
+      )
+      expect(out[0].avgDailySale).toBe(10) // 20 / 2 distinct dates
+    })
+
+    it('gives two items in the same month the same divisor', () => {
+      const out = summarize(
+        [
+          rec('2026-11-01', [row(item25.code, { openBtl: 2, sale: 30 }), row(item23.code, { openBtl: 2, sale: 30 })]),
+          rec('2026-11-02', [row(item25.code)]),
+          rec('2026-11-03', [row(item23.code)]),
+        ],
+        BAR_ITEMS,
+      )
+      expect(out).toHaveLength(2)
+      expect(out.map((r) => r.avgDailySale)).toEqual([10, 10])
+    })
+
+    it('rounds to 0.1 oz without float noise', () => {
+      const out = summarize(
+        [
+          rec('2026-11-01', [row(item25.code, { openBtl: 2, sale: 0.1 })]),
+          rec('2026-11-02', [row(item25.code, { openBtl: 2, sale: 0.2 })]),
+        ],
+        BAR_ITEMS,
+      )
+      expect(out[0].totalSale).toBe(0.3)
+      expect(out[0].avgDailySale).toBe(0.2) // 0.3 / 2 = 0.15 -> 0.2
+      expect(String(out[0].avgDailySale)).not.toMatch(/\d{4,}/)
+    })
+
+    it('is 0 and never NaN when nothing was recorded', () => {
+      expect(summarize([], BAR_ITEMS)).toEqual([])
+    })
+  })
 })
