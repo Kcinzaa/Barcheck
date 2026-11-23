@@ -111,7 +111,8 @@ BAR_ALIAS = {
     'SAN PELLEGRINO': 'SAN PELLEGRINO 50 CL', 'HEINEKEN': 'HEINEKEN BTL.',
     'SINGHA': 'SINGHA SMALL BTL.', 'TIGER': 'TIGER BTL.', 'CORONA': 'CORONA EXTRA BTL.',
     'SAMBUCA': 'SAMBUCA MATTI WHITE', 'MELON MIDORI': 'MIDORI MELON',
-    'HENNESSY V.S. O. P.': 'HENNESSY V.S.O.P', 'REMY MARTIN V.S.O.P.': 'REMY MARTIN V.S.O.P.',
+    'GLENMORANGIE': 'GLENMORANGIE 10 Y.', 'FANTA ORANGE': 'FANTA CAN',
+    'CRÈME DE MENTHE': 'MOOZE MINT GREEN', 'HENNESSY V.S. O. P.': 'HENNESSY V.S.O.P', 'REMY MARTIN V.S.O.P.': 'REMY MARTIN V.S.O.P.',
 }
 
 EXCEL_BAR_CATS = {
@@ -409,15 +410,28 @@ def main():
             continue
         seen.add(k)
         bar.append([cat, name, size])
+    dropped = []
+    kept = []  # Excel-only rows: [cat, name]
     excel_seen = set()
     for cat, name in excel_bar_items(wb):
         tgt = BAR_ALIAS.get(name.upper().strip(), name)
         if norm(tgt) in seen:
+            dropped.append('%s [%s] duplicates PDF item "%s"' % (name, cat, tgt))
             continue
-        key = (cat, norm(name))
-        if key in excel_seen:
+        k = norm(name)
+        if (cat, k) in excel_seen:
+            dropped.append('%s [%s] repeated Excel row (other sheet)' % (name, cat))
             continue
-        excel_seen.add(key)
+        excel_seen.add((cat, k))
+        kept.append([cat, name])
+    # Same name in different categories (CONTESSA gin/vodka/rum, HOUSE vs PREMIUM
+    # WINE) is a different product: keep, but make the name unique with its category.
+    cats_by_name = {}
+    for cat, name in kept:
+        cats_by_name.setdefault(norm(name), set()).add(cat)
+    for cat, name in kept:
+        if len(cats_by_name[norm(name)]) > 1:
+            name = '%s (%s)' % (name, cat.title())
         bar.append([cat, name, None])
     for n, (cat, name, size) in enumerate(bar, 1):
         if size is None:
@@ -462,6 +476,9 @@ def main():
         print('  %-12s %-24s %d' % (form, cat, n))
     print('\nDefaulted sizeOz=%d (no size on PDF; please correct) [%d]:' % (DEFAULT_SIZE, len(defaulted)))
     for n in defaulted:
+        print('  -', n)
+    print('\nExcel bar rows dropped as duplicates [%d]:' % len(dropped))
+    for n in dropped:
         print('  -', n)
     print('\nDisambiguated duplicate requisition codes [%d]:' % len(dup_notes))
     for n in dup_notes:

@@ -20,6 +20,13 @@ describe('seed data', () => {
       expect(new Set(codes).size).toBe(codes.length);
     }
   });
+  it('has no duplicate normalised names within the bar form', () => {
+    const names = ITEMS.filter((i) => i.form === 'bar').map((i) =>
+      i.name.toLowerCase().replace(/[^a-z0-9]/g, ''),
+    );
+    const dups = names.filter((n, idx) => names.indexOf(n) !== idx);
+    expect(dups).toEqual([]);
+  });
   it('contains both forms', () => {
     expect(ITEMS.some((i) => i.form === 'bar')).toBe(true);
     expect(ITEMS.some((i) => i.form === 'requisition')).toBe(true);
