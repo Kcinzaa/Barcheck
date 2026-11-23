@@ -82,6 +82,18 @@ describe('summarize', () => {
     expect(out[0].totalSale).toBe(4)
   })
 
+  it('sums a persisted touched row carrying openFrom normally', () => {
+    const day1 = row(item25.code, { openBtl: 2, openOz: 3, openFrom: '2026-10-31', dailyStore: 4, transferIn: 1, transferOut: 2, sale: 6 })
+    const out = summarize([rec('2026-11-01', [day1])], BAR_ITEMS)
+    expect(out).toHaveLength(1)
+    expect(out[0].days).toBe(1)
+    expect(out[0].totalIn).toBe(5)
+    expect(out[0].totalOut).toBe(2)
+    expect(out[0].totalSale).toBe(6)
+    expect(out[0].lastClosed).toBe(calcRow(day1, 25).closed)
+    expect(out[0].lastClosed).toBe(50) // 53 + 4 + 1 − 2 − 6
+  })
+
   it('orders by category then item order', () => {
     const items: Item[] = [
       { code: 'A1', name: 'a1', category: 'X', sizeOz: 10, form: 'bar' },

@@ -1,4 +1,7 @@
+import { isTouched } from '../domain/calc'
+import { sanitizeRow } from '../domain/row'
 import type { BarReportRow } from '../domain/types'
+import { isValidDate } from '../lib/dateParam'
 
 export interface ReportRecord {
   barId: string
@@ -26,6 +29,8 @@ export interface Repo {
   getReq(barId: string, date: string): ReqRecord | null
   saveReq(r: ReqRecord): void
   listReports(barId: string, month: string): ReportRecord[]
+  /** Per itemCode, the latest touched (sanitized) row from a report dated strictly before `date`. */
+  latestTouchedBefore(barId: string, date: string): Record<string, { date: string; row: BarReportRow }>
   statusFor(barId: string, date: string): { report: FormStatus; req: FormStatus }
 }
 
@@ -111,6 +116,31 @@ export const repo: Repo = {
       return []
     }
     return out.sort((a, b) => a.date.localeCompare(b.date))
+  },
+
+  latestTouchedBefore(barId, date) {
+    const prefix = reportPrefix(barId)
+    const out = new Map<string, { date: string; row: BarReportRow }>()
+    try {
+      for (let i = 0; i < localStorage.length; i++) {
+        const key = localStorage.key(i)
+        if (!key || !key.startsWith(prefix)) continue
+        const keyDate = key.slice(prefix.length)
+        // YYYY-MM-DD strings compare chronologically
+        if (!isValidDate(keyDate) || keyDate >= date) continue
+        const rec = read(key)
+        if (!isReport(rec, barId, keyDate)) continue
+        for (const raw of rec.rows) {
+          const row = sanitizeRow(raw)
+          if (!isTouched(row)) continue
+          const prev = out.get(row.itemCode)
+          if (!prev || prev.date <= keyDate) out.set(row.itemCode, { date: keyDate, row })
+        }
+      }
+    } catch {
+      return {}
+    }
+    return Object.fromEntries(out)
   },
 
   statusFor(barId, date) {

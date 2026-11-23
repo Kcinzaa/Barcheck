@@ -13,6 +13,8 @@ export interface BarReportRow {
   countedBtl?: number;
   countedOz?: number;
   remark: string;
+  /** YYYY-MM-DD of the earlier report Open was auto-filled from; cleared when Open is edited by hand. */
+  openFrom?: string;
 }
 
 export interface Item {

@@ -107,4 +107,104 @@ describe('repo', () => {
     expect(repo.getReq('pf', '2026-11-01')).toBeNull()
     expect(repo.listReports('pf', '2026-11')).toEqual([])
   })
+
+  it('round-trips a row carrying openFrom', () => {
+    const r = { ...report('pf', '2026-11-02'), rows: [{ ...row, openFrom: '2026-11-01' }] }
+    repo.saveReport(r)
+    expect(repo.getReport('pf', '2026-11-02')).toEqual(r)
+  })
+})
+
+describe('repo.latestTouchedBefore', () => {
+  const r = (itemCode: string, patch: Record<string, unknown> = {}) => ({ ...row, itemCode, ...patch })
+  const put = (barId: string, date: string, rows: unknown[], status: 'draft' | 'saved' = 'saved') =>
+    localStorage.setItem(`barcheck:report:${barId}:${date}`, JSON.stringify({ barId, date, reportBy: '', status, rows }))
+
+  it('returns {} when nothing is stored', () => {
+    expect(repo.latestTouchedBefore('pf', '2026-11-02')).toEqual({})
+  })
+
+  it('returns the latest touched row per item across a month boundary', () => {
+    put('pf', '2026-10-29', [r('A1', { sale: 1 }), r('B2', { sale: 9 })])
+    put('pf', '2026-10-31', [r('A1', { sale: 3 })])
+    put('pf', '2026-11-01', [r('B2', { sale: 4 }), r('C3', { sale: 0, openBtl: 0 })]) // C3 untouched
+    const out = repo.latestTouchedBefore('pf', '2026-11-02')
+    expect(Object.keys(out).sort()).toEqual(['A1', 'B2'])
+    expect(out.A1.date).toBe('2026-10-31')
+    expect(out.A1.row.sale).toBe(3)
+    expect(out.B2.date).toBe('2026-11-01')
+    expect(out.B2.row.sale).toBe(4)
+  })
+
+  it('skips untouched rows and falls back to an earlier touched one', () => {
+    put('pf', '2026-11-01', [r('A1', { sale: 2 })])
+    put('pf', '2026-11-02', [r('A1', { openBtl: 0, sale: 0 })])
+    expect(repo.latestTouchedBefore('pf', '2026-11-03').A1.date).toBe('2026-11-01')
+  })
+
+  it('a prefilled-only row (openFrom + open) is untouched and skipped', () => {
+    put('pf', '2026-11-01', [r('A1', { sale: 2 })])
+    put('pf', '2026-11-02', [r('A1', { openBtl: 5, sale: 0, openFrom: '2026-11-01' })])
+    expect(repo.latestTouchedBefore('pf', '2026-11-03').A1.date).toBe('2026-11-01')
+  })
+
+  it('ignores same-day and later dates', () => {
+    put('pf', '2026-11-02', [r('A1', { sale: 2 })])
+    put('pf', '2026-11-03', [r('A1', { sale: 3 })])
+    put('pf', '2026-12-01', [r('B2', { sale: 3 })])
+    expect(repo.latestTouchedBefore('pf', '2026-11-02')).toEqual({})
+    expect(repo.latestTouchedBefore('pf', '2026-11-03').A1.date).toBe('2026-11-02')
+  })
+
+  it('includes drafts', () => {
+    put('pf', '2026-11-01', [r('A1', { sale: 2 })], 'saved')
+    put('pf', '2026-11-02', [r('A1', { sale: 5 })], 'draft')
+    expect(repo.latestTouchedBefore('pf', '2026-11-03').A1).toMatchObject({ date: '2026-11-02', row: { sale: 5 } })
+  })
+
+  it('does not read another bar, even one sharing an id prefix', () => {
+    put('pf-bb', '2026-11-01', [r('A1', { sale: 2 })])
+    put('other', '2026-11-01', [r('A1', { sale: 2 })])
+    expect(repo.latestTouchedBefore('pf', '2026-11-02')).toEqual({})
+  })
+
+  it('skips corrupt records', () => {
+    put('pf', '2026-10-30', [r('A1', { sale: 1 })])
+    localStorage.setItem('barcheck:report:pf:2026-10-31', '{bad')
+    localStorage.setItem('barcheck:report:pf:2026-11-01', JSON.stringify({ barId: 'other', date: '2026-11-01', status: 'saved', rows: [r('A1', { sale: 7 })] }))
+    localStorage.setItem('barcheck:report:pf:2026-11-02', JSON.stringify({ barId: 'pf', date: '2026-10-01', status: 'saved', rows: [r('A1', { sale: 7 })] }))
+    localStorage.setItem('barcheck:report:pf:2026-11-03', JSON.stringify({ barId: 'pf', date: '2026-11-03', status: 'weird', rows: [r('A1', { sale: 7 })] }))
+    localStorage.setItem('barcheck:report:pf:2026-11-04', JSON.stringify({ barId: 'pf', date: '2026-11-04', status: 'saved', rows: [null] }))
+    localStorage.setItem('barcheck:report:pf:junk', JSON.stringify({ barId: 'pf', date: 'junk', status: 'saved', rows: [r('A1', { sale: 7 })] }))
+    expect(repo.latestTouchedBefore('pf', '2026-11-05')).toEqual({ A1: { date: '2026-10-30', row: r('A1', { sale: 1 }) } })
+  })
+
+  it('returns sanitized rows: garbage fields never crash or become NaN; malformed openFrom is dropped', () => {
+    put('pf', '2026-11-01', [
+      { itemCode: 'A1', sale: 5 }, // missing fields
+      { itemCode: 'B2', openOz: 'bad', sale: 'x', remark: 3, transferIn: 2 },
+      r('C3', { sale: 1, openFrom: 42 }),
+      r('D4', { sale: 1, openFrom: '2026-02-30' }),
+      r('E5', { sale: 1, openFrom: '2026-10-31' }),
+    ])
+    const out = repo.latestTouchedBefore('pf', '2026-11-02')
+    expect(out.A1.row).toEqual({ itemCode: 'A1', openBtl: 0, openOz: 0, dailyStore: 0, transferIn: 0, transferOut: 0, sale: 5, remark: '' })
+    expect(out.B2.row).toEqual({ itemCode: 'B2', openBtl: 0, openOz: 0, dailyStore: 0, transferIn: 2, transferOut: 0, sale: 0, remark: '' })
+    expect('openFrom' in out.C3.row).toBe(false)
+    expect('openFrom' in out.D4.row).toBe(false)
+    expect(out.E5.row.openFrom).toBe('2026-10-31')
+  })
+
+  it('returns {} when storage throws', () => {
+    put('pf', '2026-11-01', [r('A1', { sale: 2 })])
+    vi.spyOn(Storage.prototype, 'key').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError')
+    })
+    expect(repo.latestTouchedBefore('pf', '2026-11-02')).toEqual({})
+    vi.restoreAllMocks()
+    vi.spyOn(Storage.prototype, 'getItem').mockImplementation(() => {
+      throw new DOMException('denied', 'SecurityError')
+    })
+    expect(repo.latestTouchedBefore('pf', '2026-11-02')).toEqual({})
+  })
 })

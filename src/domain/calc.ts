@@ -1,5 +1,6 @@
 import type { BarReportRow } from './types';
 import { toOz } from './units';
+import { isValidDate } from '../lib/dateParam';
 
 const round1 = (n: number): number => {
   const r = Math.round(n * 10) / 10;
@@ -21,16 +22,20 @@ export function calcRow(
   return { total1, total2, closed, variance, negative: closed < 0 };
 }
 
+/**
+ * A row counts as entered when any field differs from empty. While Open is only
+ * auto-filled (`openFrom` set), the open values alone do not count.
+ */
 export function isTouched(row: BarReportRow): boolean {
-  return (
-    row.openBtl !== 0 ||
-    row.openOz !== 0 ||
+  const other =
     row.dailyStore !== 0 ||
     row.transferIn !== 0 ||
     row.transferOut !== 0 ||
     row.sale !== 0 ||
     row.countedBtl !== undefined ||
     row.countedOz !== undefined ||
-    row.remark.trim() !== ''
-  );
+    row.remark.trim() !== '';
+  if (other) return true;
+  if (isValidDate(row.openFrom)) return false;
+  return row.openBtl !== 0 || row.openOz !== 0;
 }
