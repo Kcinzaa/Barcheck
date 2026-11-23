@@ -1,6 +1,7 @@
 #!/usr/bin/env python3
 """Build src/data/items.json from BAR_Reports.xlsx plus items transcribed by hand
-from the scanned PDF (no text layer). Run: python3 -I scripts/build-seed.py [xlsx]
+from the scanned PDF (no text layer). Run: python3 -I scripts/build-seed.py <path-to-BAR_Reports.xlsx>
+(the xlsx path is required; the file is user data and is not kept in the repo)
 
 Sources:
   - PDF pages 2-5 (Bar Report, "Size OZ" column) -> PDF_BAR below
@@ -9,16 +10,27 @@ Sources:
 Category headings are the known lists below (taken from the PDF page headings
 and the Excel category rows; Excel item rows are also column-A only, so
 "only column A filled" cannot identify categories).
+
+Correcting bottle sizes: put them in SIZE_OVERRIDES below, never edit items.json by
+hand. Overrides are applied after PDF sizes and the default, so they survive every
+regeneration. Keys are the generated item code ("B012") or the normalised item name
+(see norm(): lower-case ascii letters/digits only, e.g. "johnniewalkerblack").
+Changing a size after real data exists shifts historical stock by bottles x change.
 """
 import json, os, re, sys, warnings
 
 warnings.filterwarnings('ignore')
 import openpyxl
 
-XLSX = sys.argv[1] if len(sys.argv) > 1 else \
-    '/root/.claude/uploads/cd29dc35-7a9c-532c-a153-036421568bdd/07cd5bd6-BAR_Reports.xlsx'
+if len(sys.argv) != 2:
+    print('usage: python3 -I scripts/build-seed.py <path-to-BAR_Reports.xlsx>', file=sys.stderr)
+    sys.exit(2)
+XLSX = sys.argv[1]
 OUT = os.path.join(os.path.dirname(os.path.abspath(__file__)), '..', 'src', 'data', 'items.json')
 DEFAULT_SIZE = 23
+
+# Verified size corrections (oz per bottle). Key: item code ("B012") or norm(name).
+SIZE_OVERRIDES: dict[str, float] = {}
 
 
 def norm(s):
@@ -437,7 +449,9 @@ def main():
         if size is None:
             size = DEFAULT_SIZE
             defaulted.append(name)
-        items.append({'code': 'B%03d' % n, 'name': name, 'category': cat,
+        code = 'B%03d' % n
+        size = SIZE_OVERRIDES.get(code, SIZE_OVERRIDES.get(norm(name), size))
+        items.append({'code': code, 'name': name, 'category': cat,
                       'sizeOz': size, 'form': 'bar'})
 
     # ---- requisition items (PDF page 1 first, Excel fills gaps)
