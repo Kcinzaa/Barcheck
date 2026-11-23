@@ -5,6 +5,8 @@ import ItemCard, { type RowPatch } from '../components/ItemCard'
 import { BARS, type Bar } from '../data/bars'
 import { ITEMS } from '../data/items'
 import { isTouched } from '../domain/calc'
+import { carryOpen } from '../domain/carry'
+import { emptyRow, sanitizeRow } from '../domain/row'
 import type { BarReportRow, Item } from '../domain/types'
 import { repo } from '../storage/repo'
 import { IconCheck, Wave } from '../components/Glyphs'
@@ -28,39 +30,6 @@ function isValidDate(s: string | undefined): s is string {
   const [y, m, d] = s.split('-').map(Number)
   const dt = new Date(Date.UTC(y, m - 1, d))
   return dt.getUTCFullYear() === y && dt.getUTCMonth() === m - 1 && dt.getUTCDate() === d
-}
-
-const num = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? x : 0)
-const optNum = (x: unknown) => (typeof x === 'number' && Number.isFinite(x) ? x : undefined)
-
-const emptyRow = (itemCode: string): BarReportRow => ({
-  itemCode,
-  openBtl: 0,
-  openOz: 0,
-  dailyStore: 0,
-  transferIn: 0,
-  transferOut: 0,
-  sale: 0,
-  remark: '',
-})
-
-/** Stored rows are only shape-checked by the repo; coerce every field so nothing renders as NaN. */
-function sanitize(r: BarReportRow): BarReportRow {
-  const row: BarReportRow = {
-    itemCode: r.itemCode,
-    openBtl: num(r.openBtl),
-    openOz: num(r.openOz),
-    dailyStore: num(r.dailyStore),
-    transferIn: num(r.transferIn),
-    transferOut: num(r.transferOut),
-    sale: num(r.sale),
-    remark: typeof r.remark === 'string' ? r.remark : '',
-  }
-  const cb = optNum(r.countedBtl)
-  const co = optNum(r.countedOz)
-  if (cb !== undefined) row.countedBtl = cb
-  if (co !== undefined) row.countedOz = co
-  return row
 }
 
 function NotFound({ message }: { message: string }) {
@@ -88,9 +57,20 @@ function ReportForm({ bar, date }: { bar: Bar; date: string }) {
     const rows: Rows = {}
     for (const item of BAR_ITEMS) rows[item.code] = emptyRow(item.code)
     const unknown: BarReportRow[] = []
+    const stored = new Set<string>()
     for (const r of rec?.rows ?? []) {
-      if (BAR_CODES.has(r.itemCode)) rows[r.itemCode] = sanitize(r)
-      else unknown.push(r) // item no longer in the seed: not shown, but kept on write
+      if (BAR_CODES.has(r.itemCode)) {
+        rows[r.itemCode] = sanitizeRow(r)
+        stored.add(r.itemCode)
+      } else unknown.push(r) // item no longer in the seed: not shown, but kept on write
+    }
+    // Prefill Open from the latest earlier Closed. Display state only: such rows stay
+    // untouched (isTouched ignores Open while openFrom is set), so nothing is written.
+    const prev = repo.latestTouchedBefore(bar.id, date)
+    for (const item of BAR_ITEMS) {
+      const src = Object.prototype.hasOwnProperty.call(prev, item.code) ? prev[item.code] : undefined
+      if (!src || stored.has(item.code)) continue
+      rows[item.code] = { ...emptyRow(item.code), ...carryOpen(src.row, item.sizeOz ?? 0), openFrom: src.date }
     }
     return { rows, reportBy: typeof rec?.reportBy === 'string' ? rec.reportBy : '', unknown }
   })
@@ -156,7 +136,11 @@ function ReportForm({ bar, date }: { bar: Bar; date: string }) {
   const onRowChange = useCallback((code: string, patch: RowPatch) => {
     dirty.current = true
     setJustSaved(false)
-    setRows((prev) => ({ ...prev, [code]: { ...prev[code], ...patch } }))
+    setRows((prev) => {
+      const next = { ...prev[code], ...patch }
+      if (next.openFrom === undefined) delete next.openFrom
+      return { ...prev, [code]: next }
+    })
   }, [])
 
   const onSave = () => {

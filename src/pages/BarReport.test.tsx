@@ -315,4 +315,175 @@ describe('BarReport', () => {
     expect(spy).not.toHaveBeenCalled()
     spy.mockRestore()
   })
+
+  describe('prefill Open from the previous Closed', () => {
+    const PREV = '2026-11-21'
+    const NOTE = `เติมจากวันที่ ${PREV}`
+    const blank = { openBtl: 0, openOz: 0, dailyStore: 0, transferIn: 0, transferOut: 0, sale: 0, remark: '' }
+    const note = (code: string) => within(card(code)).queryByTestId('open-from')
+    const savedRow = (code: string, date = DATE) => repo.getReport(BAR, date)?.rows.find((r) => r.itemCode === code)
+    const seedPrev = () =>
+      repo.saveReport({
+        barId: BAR,
+        date: PREV,
+        reportBy: 'A',
+        status: 'draft',
+        rows: [
+          // closed = 1 btl 8 oz − 10 oz = 23 oz
+          { itemCode: item25.code, ...blank, openBtl: 1, openOz: 8, sale: 10 },
+          // counted wins over computed
+          { itemCode: item23.code, ...blank, openBtl: 5, sale: 1, countedBtl: 1, countedOz: 2 },
+        ],
+      })
+
+    it('a new date shows the prefilled Open and the note; counter stays 0', () => {
+      seedPrev()
+      renderPage()
+      expect(field(item25.code, 'Open ขวด').value).toBe('')
+      expect(field(item25.code, 'Open oz').value).toBe('23')
+      expect(closedText(item25.code)).toBe('0 ขวด 23 oz')
+      expect(note(item25.code)?.textContent).toBe(NOTE)
+      expect(field(item23.code, 'Open ขวด').value).toBe('1')
+      expect(field(item23.code, 'Open oz').value).toBe('2')
+      expect(note(item23.code)?.textContent).toBe(NOTE)
+      const other = BAR_ITEMS.find((i) => i.code !== item25.code && i.code !== item23.code)!
+      expect(note(other.code)).toBeNull()
+      expect(counter()).toBe(`กรอกแล้ว 0/${N}`)
+    })
+
+    it('opening a prefilled page writes nothing', () => {
+      vi.useFakeTimers()
+      seedPrev()
+      const spy = vi.spyOn(repo, 'saveReport')
+      const { unmount } = renderPage()
+      act(() => vi.advanceTimersByTime(1000))
+      unmount()
+      expect(spy).not.toHaveBeenCalled()
+      spy.mockRestore()
+      expect(repo.getReport(BAR, DATE)).toBeNull()
+    })
+
+    it('editing Sale stores the row with the prefilled Open and openFrom', () => {
+      vi.useFakeTimers()
+      seedPrev()
+      renderPage()
+      type(item25.code, 'Sale oz', '5')
+      act(() => vi.advanceTimersByTime(300))
+      expect(savedRow(item25.code)).toEqual({ itemCode: item25.code, ...blank, openOz: 23, sale: 5, openFrom: PREV })
+      expect(repo.getReport(BAR, DATE)!.rows).toHaveLength(1) // prefilled-only rows are not stored
+      expect(note(item25.code)?.textContent).toBe(NOTE)
+      expect(counter()).toBe(`กรอกแล้ว 1/${N}`)
+      expect(closedText(item25.code)).toBe('0 ขวด 18 oz')
+    })
+
+    it('editing a secondary field keeps openFrom and the note', () => {
+      seedPrev()
+      renderPage()
+      type(item25.code, 'Remark', 'spill')
+      expect(note(item25.code)?.textContent).toBe(NOTE)
+      fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))
+      expect(savedRow(item25.code)).toMatchObject({ openOz: 23, remark: 'spill', openFrom: PREV })
+    })
+
+    it('clearing the only other entry makes the row untouched again', () => {
+      seedPrev()
+      renderPage()
+      type(item25.code, 'Sale oz', '5')
+      expect(counter()).toBe(`กรอกแล้ว 1/${N}`)
+      type(item25.code, 'Sale oz', '')
+      expect(counter()).toBe(`กรอกแล้ว 0/${N}`)
+      expect(note(item25.code)?.textContent).toBe(NOTE)
+    })
+
+    it('typing Open by hand clears the note and openFrom', () => {
+      seedPrev()
+      renderPage()
+      type(item25.code, 'Open oz', '20')
+      expect(note(item25.code)).toBeNull()
+      expect(counter()).toBe(`กรอกแล้ว 1/${N}`)
+      fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))
+      const row = savedRow(item25.code)!
+      expect(row).toEqual({ itemCode: item25.code, ...blank, openOz: 20 })
+      expect('openFrom' in row).toBe(false)
+    })
+
+    it('re-typing the same Open value still makes it user-entered', () => {
+      seedPrev()
+      renderPage()
+      type(item25.code, 'Open oz', '23.0') // same number, typed by hand
+      expect(note(item25.code)).toBeNull()
+      expect(counter()).toBe(`กรอกแล้ว 1/${N}`)
+    })
+
+    it('the Open stepper also clears the note and openFrom', () => {
+      seedPrev()
+      renderPage()
+      fireEvent.click(within(card(item25.code)).getByRole('button', { name: 'เพิ่ม Open ขวด' }))
+      expect(note(item25.code)).toBeNull()
+      expect(field(item25.code, 'Open ขวด').value).toBe('1')
+      expect(field(item25.code, 'Open oz').value).toBe('23')
+      fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))
+      const row = savedRow(item25.code)!
+      expect(row).toEqual({ itemCode: item25.code, ...blank, openBtl: 1, openOz: 23 })
+      expect('openFrom' in row).toBe(false)
+    })
+
+    it('an existing stored row is never overwritten; items without one are prefilled', () => {
+      seedPrev()
+      repo.saveReport({
+        barId: BAR,
+        date: DATE,
+        reportBy: '',
+        status: 'saved',
+        rows: [{ itemCode: item25.code, ...blank, openOz: 4, sale: 1 }],
+      })
+      renderPage()
+      expect(field(item25.code, 'Open oz').value).toBe('4')
+      expect(note(item25.code)).toBeNull()
+      expect(field(item23.code, 'Open ขวด').value).toBe('1')
+      expect(note(item23.code)?.textContent).toBe(NOTE)
+      expect(counter()).toBe(`กรอกแล้ว 1/${N}`)
+    })
+
+    it('a date earlier than all records has no prefill', () => {
+      seedPrev()
+      renderPage(BAR, '2026-11-20')
+      expect(field(item25.code, 'Open oz').value).toBe('')
+      expect(screen.queryAllByTestId('open-from')).toHaveLength(0)
+    })
+
+    it('the same date as the latest record is not prefilled from itself', () => {
+      seedPrev()
+      renderPage(BAR, PREV)
+      expect(field(item25.code, 'Open ขวด').value).toBe('1')
+      expect(field(item25.code, 'Open oz').value).toBe('8')
+      expect(screen.queryAllByTestId('open-from')).toHaveLength(0)
+    })
+
+    it('a stored row keeps its openFrom across reloads; a malformed one is dropped', () => {
+      repo.saveReport({
+        barId: BAR,
+        date: DATE,
+        reportBy: '',
+        status: 'draft',
+        rows: [
+          { itemCode: item25.code, ...blank, openOz: 23, sale: 5, openFrom: PREV },
+          { itemCode: item23.code, ...blank, openOz: 7, openFrom: 'bad' as string },
+        ],
+      })
+      renderPage()
+      expect(note(item25.code)?.textContent).toBe(NOTE)
+      expect(note(item23.code)).toBeNull()
+      expect(field(item23.code, 'Open oz').value).toBe('7')
+      expect(counter()).toBe(`กรอกแล้ว 2/${N}`)
+      expect(document.body.textContent).not.toContain('NaN')
+    })
+
+    it('chains across a day off from the latest earlier record', () => {
+      seedPrev()
+      renderPage(BAR, '2026-11-25')
+      expect(field(item25.code, 'Open oz').value).toBe('23')
+      expect(note(item25.code)?.textContent).toBe(NOTE)
+    })
+  })
 })

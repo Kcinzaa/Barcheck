@@ -73,11 +73,29 @@ function ItemCard({ item, row, onChange }: Props) {
         <span className="ic-size">{size} oz/ขวด</span>
       </header>
 
-      <fieldset className="ic-field">
-        <legend>Open</legend>
+      <fieldset className="ic-field ic-field-open">
+        <legend>
+          Open
+          {row.openFrom && (
+            <span className="ic-open-from" data-testid="open-from">
+              เติมจากวันที่ {row.openFrom}
+            </span>
+          )}
+        </legend>
         <div className="ic-pair">
-          <QtyInput label="Open ขวด" unit="ขวด" value={row.openBtl} onChange={(n) => set({ openBtl: n })} />
-          <QtyInput label="Open oz" unit="oz" value={row.openOz} onChange={(n) => set({ openOz: n })} />
+          {/* Editing Open by hand makes it user-entered: drop the auto-fill marker. */}
+          <QtyInput
+            label="Open ขวด"
+            unit="ขวด"
+            value={row.openBtl}
+            onChange={(n) => set({ openBtl: n, openFrom: undefined })}
+          />
+          <QtyInput
+            label="Open oz"
+            unit="oz"
+            value={row.openOz}
+            onChange={(n) => set({ openOz: n, openFrom: undefined })}
+          />
         </div>
       </fieldset>
 
