@@ -13,9 +13,10 @@ const rows: SummaryRow[] = [
     totalSale: 30.3,
     avgDailySale: 15.2,
     lastClosed: 57.5,
+    lastSizeOz: 25,
     dailyRows: [
-      { date: '2026-11-01', closed: 66.9, sale: 10.1 },
-      { date: '2026-11-02', closed: 57.5, sale: 20.2 },
+      { date: '2026-11-01', closed: 66.9, sale: 10.1, sizeOz: 25 },
+      { date: '2026-11-02', closed: 57.5, sale: 20.2, sizeOz: 25 },
     ],
   },
   {
@@ -29,7 +30,8 @@ const rows: SummaryRow[] = [
     totalSale: 9,
     avgDailySale: 4.5,
     lastClosed: -9,
-    dailyRows: [{ date: '2026-11-02', closed: -9, sale: 9 }],
+    lastSizeOz: 23,
+    dailyRows: [{ date: '2026-11-02', closed: -9, sale: 9, sizeOz: 23 }],
   },
 ]
 
@@ -74,5 +76,14 @@ describe('exportFileName', () => {
     expect(exportFileName('PF&BB', '2026-11')).toBe('barcheck-PF-BB-2026-11.xlsx')
     expect(exportFileName('Ray Bar', '2026-11')).toBe('barcheck-Ray-Bar-2026-11.xlsx')
     expect(exportFileName('TH&Saya', '2026-11')).toBe('barcheck-TH-Saya-2026-11.xlsx')
+  })
+})
+
+describe('toSheets closed split at snapshot size', () => {
+  it('splits Closed bottles/oz at lastSizeOz, not the item size', () => {
+    const r: SummaryRow = { ...rows[0], sizeOz: 23, lastSizeOz: 25, lastClosed: 30 }
+    const { summary } = toSheets('b', '2026-11', [r])
+    const line = summary[1]
+    expect(line.slice(-3)).toEqual([30, 1, 5])
   })
 })

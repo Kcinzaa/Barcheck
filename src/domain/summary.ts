@@ -20,7 +20,10 @@ export interface SummaryRow {
   avgDailySale: number
   /** oz: closed balance on the latest date with a touched row */
   lastClosed: number
-  dailyRows: { date: string; closed: number; sale: number }[]
+  /** oz size used to compute `lastClosed` (the producing row's snapshot, else the item's size); split lastClosed at this. */
+  lastSizeOz: number
+  /** `sizeOz` is the size that row's `closed` was computed at. */
+  dailyRows: { date: string; closed: number; sale: number; sizeOz: number }[]
 }
 
 const round1 = (n: number): number => {
@@ -54,6 +57,7 @@ export function summarize(records: ReportRecord[], items: Item[]): SummaryRow[] 
           totalSale: 0,
           avgDailySale: 0,
           lastClosed: 0,
+          lastSizeOz: sizeOz,
           dailyRows: [],
         }
         acc.set(item.code, s)
@@ -64,7 +68,8 @@ export function summarize(records: ReportRecord[], items: Item[]): SummaryRow[] 
       s.totalOut = round1(s.totalOut + row.transferOut)
       s.totalSale = round1(s.totalSale + row.sale)
       s.lastClosed = closed
-      s.dailyRows.push({ date: rec.date, closed, sale: row.sale })
+      s.lastSizeOz = rowSize
+      s.dailyRows.push({ date: rec.date, closed, sale: row.sale, sizeOz: rowSize })
     }
   }
 

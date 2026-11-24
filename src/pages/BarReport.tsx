@@ -8,6 +8,7 @@ import { isTouched } from '../domain/calc'
 import { carryOpen } from '../domain/carry'
 import { emptyRow, sanitizeRow } from '../domain/row'
 import type { BarReportRow, Item } from '../domain/types'
+import { fromOz, toOz } from '../domain/units'
 import { SAVE_ERROR } from '../hooks/useAutosave'
 import { repo } from '../storage/repo'
 import { IconCheck, Wave } from '../components/Glyphs'
@@ -71,7 +72,11 @@ function ReportForm({ bar, date }: { bar: Bar; date: string }) {
     for (const item of BAR_ITEMS) {
       const src = Object.prototype.hasOwnProperty.call(prev, item.code) ? prev[item.code] : undefined
       if (!src || stored.has(item.code)) continue
-      rows[item.code] = { ...emptyRow(item.code), ...carryOpen(src.row, src.row.sizeOz ?? item.sizeOz ?? 0), openFrom: src.date }
+      // Compute at the source row's size, then re-split the oz TOTAL at the item's current size.
+      const srcSize = src.row.sizeOz ?? item.sizeOz ?? 0
+      const c = carryOpen(src.row, srcSize)
+      const { bottles, oz } = fromOz(toOz(c.openBtl, c.openOz, srcSize), item.sizeOz ?? 0)
+      rows[item.code] = { ...emptyRow(item.code), openBtl: bottles, openOz: oz, openFrom: src.date }
     }
     return { rows, reportBy: typeof rec?.reportBy === 'string' ? rec.reportBy : '', unknown }
   })

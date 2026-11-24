@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { repo, type ReportRecord, type ReqRecord } from './repo'
 
 const row = {
@@ -225,6 +225,9 @@ describe('repo write result', () => {
 })
 
 describe('updatedAt, onSaved, mergeRemote', () => {
+  const offs: (() => void)[] = []
+  afterEach(() => offs.splice(0).forEach((f) => f()))
+
   const failing = () =>
     vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
       throw new DOMException('full', 'QuotaExceededError')
@@ -249,6 +252,7 @@ describe('updatedAt, onSaved, mergeRemote', () => {
   it('onSaved fires once per successful save with form/barId/date', () => {
     const fn = vi.fn()
     const off = repo.onSaved(fn)
+    offs.push(off)
     repo.saveReport(report('pf', '2026-11-01'))
     repo.saveReq(req('pf', '2026-11-02'))
     expect(fn).toHaveBeenCalledTimes(2)
@@ -262,6 +266,7 @@ describe('updatedAt, onSaved, mergeRemote', () => {
   it('onSaved does not fire on a failed write', () => {
     const fn = vi.fn()
     const off = repo.onSaved(fn)
+    offs.push(off)
     failing()
     repo.saveReport(report('pf', '2026-11-01'))
     repo.saveReq(req('pf', '2026-11-01'))
@@ -272,17 +277,16 @@ describe('updatedAt, onSaved, mergeRemote', () => {
   it('a throwing listener does not break the save or other listeners', () => {
     const bad = vi.fn(() => { throw new Error('boom') })
     const good = vi.fn()
-    const o1 = repo.onSaved(bad)
-    const o2 = repo.onSaved(good)
+    offs.push(repo.onSaved(bad), repo.onSaved(good))
     expect(repo.saveReport(report('pf', '2026-11-01'))).toBe(true)
     expect(good).toHaveBeenCalledTimes(1)
     expect(repo.getReport('pf', '2026-11-01')).not.toBeNull()
-    o1(); o2()
   })
 
   it('mergeRemote replaces, keeps incoming updatedAt, and never fires onSaved', () => {
     const fn = vi.fn()
     const off = repo.onSaved(fn)
+    offs.push(off)
     repo.saveReport(report('pf', '2026-11-01', 'draft'))
     fn.mockClear()
     const incoming = { ...report('pf', '2026-11-01', 'saved'), updatedAt: '2026-01-01T00:00:00.000Z' }

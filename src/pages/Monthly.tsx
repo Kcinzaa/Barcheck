@@ -49,7 +49,7 @@ function ItemRows({ r }: { r: SummaryRow }) {
         <Qty oz={r.totalOut} sizeOz={r.sizeOz} testId="out" />
         <Qty oz={r.totalSale} sizeOz={r.sizeOz} testId="sale" />
         <Qty oz={r.avgDailySale} sizeOz={r.sizeOz} testId="avg" />
-        <Qty oz={r.lastClosed} sizeOz={r.sizeOz} testId="closed" />
+        <Qty oz={r.lastClosed} sizeOz={r.lastSizeOz} testId="closed" />
       </tr>
       {open && (
         <tr className="m-daily-row">
@@ -67,7 +67,7 @@ function ItemRows({ r }: { r: SummaryRow }) {
                   <tr key={d.date}>
                     <td>{d.date}</td>
                     <Qty oz={d.sale} sizeOz={r.sizeOz} />
-                    <Qty oz={d.closed} sizeOz={r.sizeOz} />
+                    <Qty oz={d.closed} sizeOz={d.sizeOz} />
                   </tr>
                 ))}
               </tbody>

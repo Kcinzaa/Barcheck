@@ -36,7 +36,7 @@ export function toSheets(
   const summary: Cell[][] = [SUMMARY_HEADER]
   const daily: Cell[][] = [DAILY_HEADER]
   for (const r of rows) {
-    const { bottles, oz } = splitBtlOz(r.lastClosed, r.sizeOz)
+    const { bottles, oz } = splitBtlOz(r.lastClosed, r.lastSizeOz)
     summary.push([
       r.code,
       r.name,

@@ -336,6 +336,23 @@ describe('BarReport', () => {
         ],
       })
 
+    it('prefill preserves the oz total when the item size differs from the source snapshot', () => {
+      repo.saveReport({
+        barId: BAR, date: PREV, reportBy: 'A', status: 'draft',
+        // snapshot 25: 1 btl - 5 oz sale = 20 oz closed
+        rows: [{ itemCode: item23.code, ...blank, openBtl: 1, sale: 5, sizeOz: 25 }],
+      })
+      renderPage()
+      expect(field(item23.code, 'Open ขวด').value).toBe('')
+      expect(field(item23.code, 'Open oz').value).toBe('20')
+      expect(closedText(item23.code)).toBe('0 ขวด 20 oz')
+      fireEvent.change(field(item23.code, 'Remark'), { target: { value: 'x' } })
+      fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))
+      const saved = savedRow(item23.code)!
+      expect(saved.sizeOz).toBe(23)
+      expect(saved.openBtl * 23 + saved.openOz).toBe(20)
+    })
+
     it('a new date shows the prefilled Open and the note; counter stays 0', () => {
       seedPrev()
       renderPage()

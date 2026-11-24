@@ -50,8 +50,8 @@ describe('summarize', () => {
     expect(s.totalSale).toBe(30.3) // 10.1 + 20.2 without float noise
     expect(s.lastClosed).toBe(calcRow(day2, 25).closed)
     expect(s.dailyRows).toEqual([
-      { date: '2026-11-01', closed: calcRow(day1, 25).closed, sale: 10.1 },
-      { date: '2026-11-02', closed: calcRow(day2, 25).closed, sale: 20.2 },
+      { date: '2026-11-01', closed: calcRow(day1, 25).closed, sale: 10.1, sizeOz: 25 },
+      { date: '2026-11-02', closed: calcRow(day2, 25).closed, sale: 20.2, sizeOz: 25 },
     ])
   })
 
@@ -177,5 +177,25 @@ describe('summarize row.sizeOz snapshot', () => {
     const [s] = summarize([rec([r])], BAR_ITEMS)
     expect(s.lastClosed).toBe(calcRow(r, 23).closed)
     expect(s.lastClosed).toBe(18)
+  })
+})
+
+describe('summarize lastSizeOz / dailyRows sizeOz', () => {
+  const rec = (date: string, rows: BarReportRow[]): ReportRecord => ({ barId: 'b', date, reportBy: '', status: 'saved', rows })
+  it('uses the last touched row\'s snapshot size; dailyRows carry their own size', () => {
+    const r = (patch: Partial<BarReportRow>) => row(item23.code, { openBtl: 1, sale: 5, ...patch })
+    const [s] = summarize(
+      [rec('2026-11-01', [r({ sizeOz: 25 })]), rec('2026-11-02', [r({ sizeOz: 23 })])],
+      BAR_ITEMS,
+    )
+    expect(s.sizeOz).toBe(23)
+    expect(s.lastSizeOz).toBe(23)
+    expect(s.dailyRows.map((d) => d.sizeOz)).toEqual([25, 23])
+    const [t] = summarize(
+      [rec('2026-11-01', [r({ sizeOz: 23 })]), rec('2026-11-02', [r({ sizeOz: 25 })])],
+      BAR_ITEMS,
+    )
+    expect(t.lastSizeOz).toBe(25)
+    expect(t.lastClosed).toBe(20)
   })
 })
