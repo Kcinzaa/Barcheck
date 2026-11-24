@@ -161,3 +161,21 @@ describe('summarize', () => {
     })
   })
 })
+
+describe('summarize row.sizeOz snapshot', () => {
+  const rec = (rows: BarReportRow[]): ReportRecord => ({
+    barId: 'b', date: '2026-11-01', reportBy: '', status: 'saved', rows,
+  })
+  it('uses row.sizeOz over item.sizeOz for closed', () => {
+    const r = row(item23.code, { openBtl: 1, sale: 5 })
+    const [withSnap] = summarize([rec([{ ...r, sizeOz: 25 }])], BAR_ITEMS)
+    expect(withSnap.lastClosed).toBe(calcRow(r, 25).closed)
+    expect(withSnap.lastClosed).toBe(20)
+  })
+  it('falls back to item.sizeOz when the row has none', () => {
+    const r = row(item23.code, { openBtl: 1, sale: 5 })
+    const [s] = summarize([rec([r])], BAR_ITEMS)
+    expect(s.lastClosed).toBe(calcRow(r, 23).closed)
+    expect(s.lastClosed).toBe(18)
+  })
+})

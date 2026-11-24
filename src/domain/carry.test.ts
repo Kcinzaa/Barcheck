@@ -54,3 +54,13 @@ describe('carryOpen', () => {
     expect(carryOpen(row, 25)).toEqual({ openBtl: 0, openOz: 20 })
   })
 })
+
+describe('carryOpen with a snapshot size (caller passes row.sizeOz ?? item.sizeOz)', () => {
+  it('uses the row snapshot over the item size', () => {
+    const row = { ...base, openBtl: 1, sale: 5, sizeOz: 25 }
+    const itemSize = 23
+    expect(carryOpen(row, row.sizeOz ?? itemSize)).toEqual({ openBtl: 0, openOz: 20 })
+    const noSnap = { ...base, openBtl: 1, sale: 5 }
+    expect(carryOpen(noSnap, noSnap.sizeOz ?? itemSize)).toEqual({ openBtl: 0, openOz: 18 })
+  })
+})

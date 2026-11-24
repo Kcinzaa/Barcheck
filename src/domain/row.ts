@@ -35,5 +35,7 @@ export function sanitizeRow(r: BarReportRow): BarReportRow {
   if (cb !== undefined) row.countedBtl = cb;
   if (co !== undefined) row.countedOz = co;
   if (isValidDate(r.openFrom)) row.openFrom = r.openFrom;
+  const sz = optNum(r.sizeOz);
+  if (sz !== undefined && sz > 0) row.sizeOz = sz;
   return row;
 }

@@ -71,7 +71,7 @@ function ReportForm({ bar, date }: { bar: Bar; date: string }) {
     for (const item of BAR_ITEMS) {
       const src = Object.prototype.hasOwnProperty.call(prev, item.code) ? prev[item.code] : undefined
       if (!src || stored.has(item.code)) continue
-      rows[item.code] = { ...emptyRow(item.code), ...carryOpen(src.row, item.sizeOz ?? 0), openFrom: src.date }
+      rows[item.code] = { ...emptyRow(item.code), ...carryOpen(src.row, src.row.sizeOz ?? item.sizeOz ?? 0), openFrom: src.date }
     }
     return { rows, reportBy: typeof rec?.reportBy === 'string' ? rec.reportBy : '', unknown }
   })
@@ -89,7 +89,11 @@ function ReportForm({ bar, date }: { bar: Bar; date: string }) {
   const write = useCallback(
     (status: 'draft' | 'saved'): boolean => {
       const { rows: r, reportBy: by } = latest.current
-      const touched = BAR_ITEMS.map((i) => r[i.code]).filter(isTouched)
+      // Snapshot the item's current size once, when a row is first persisted.
+      const touched = BAR_ITEMS.filter((i) => isTouched(r[i.code])).map((i) => {
+        const row = r[i.code]
+        return row.sizeOz === undefined && i.sizeOz !== undefined && i.sizeOz > 0 ? { ...row, sizeOz: i.sizeOz } : row
+      })
       return repo.saveReport({ barId: bar.id, date, reportBy: by, status, rows: [...touched, ...initial.unknown] })
     },
     [bar.id, date, initial.unknown],

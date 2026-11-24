@@ -40,6 +40,7 @@ export function summarize(records: ReportRecord[], items: Item[]): SummaryRow[] 
       const item = byCode.get(row.itemCode)
       if (!item || !isTouched(row)) continue
       const sizeOz = item.sizeOz ?? 0
+      const rowSize = row.sizeOz ?? sizeOz
       let s = acc.get(item.code)
       if (!s) {
         s = {
@@ -57,7 +58,7 @@ export function summarize(records: ReportRecord[], items: Item[]): SummaryRow[] 
         }
         acc.set(item.code, s)
       }
-      const { closed } = calcRow(row, sizeOz)
+      const { closed } = calcRow(row, rowSize)
       s.days += 1
       s.totalIn = round1(s.totalIn + row.dailyStore + row.transferIn)
       s.totalOut = round1(s.totalOut + row.transferOut)

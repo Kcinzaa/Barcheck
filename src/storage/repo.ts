@@ -9,6 +9,8 @@ export interface ReportRecord {
   reportBy: string
   status: 'draft' | 'saved'
   rows: BarReportRow[]
+  /** ISO time of the last local save; set by saveReport. */
+  updatedAt?: string
 }
 
 export interface ReqRecord {
@@ -19,6 +21,14 @@ export interface ReqRecord {
   issuedBy: string
   status: 'draft' | 'saved'
   rows: { itemCode: string; qty: number }[]
+  /** ISO time of the last local save; set by saveReq. */
+  updatedAt?: string
+}
+
+export interface SavedEvent {
+  form: 'report' | 'req'
+  barId: string
+  date: string
 }
 
 type FormStatus = 'none' | 'draft' | 'saved'
@@ -34,6 +44,13 @@ export interface Repo {
   /** Per itemCode, the latest touched (sanitized) row from a report dated strictly before `date`. */
   latestTouchedBefore(barId: string, date: string): Record<string, { date: string; row: BarReportRow }>
   statusFor(barId: string, date: string): { report: FormStatus; req: FormStatus }
+  /** Called synchronously after each successful local save (not for mergeRemote). Returns an unsubscribe. */
+  onSaved(listener: (e: SavedEvent) => void): () => void
+  /**
+   * Apply a record pulled from the remote as-is (keeps its updatedAt). `pendingKeys` holds
+   * "{form}:{barId}:{date}". Returns false if skipped (pending, malformed) or the write failed.
+   */
+  mergeRemote(form: 'report' | 'req', record: ReportRecord | ReqRecord, pendingKeys: Set<string>): boolean
 }
 
 const reportPrefix = (barId: string) => `barcheck:report:${barId}:`
@@ -97,11 +114,50 @@ function write(key: string, value: unknown): boolean {
   }
 }
 
+const listeners = new Set<(e: SavedEvent) => void>()
+
+function emit(e: SavedEvent) {
+  for (const l of [...listeners]) {
+    try {
+      l(e)
+    } catch {
+      // a faulty listener must not affect the save or other listeners
+    }
+  }
+}
+
 export const repo: Repo = {
   getReport: readReport,
-  saveReport: (r) => write(reportKey(r.barId, r.date), r),
+  saveReport(r) {
+    if (!write(reportKey(r.barId, r.date), { ...r, updatedAt: new Date().toISOString() })) return false
+    emit({ form: 'report', barId: r.barId, date: r.date })
+    return true
+  },
   getReq: readReq,
-  saveReq: (r) => write(reqKey(r.barId, r.date), r),
+  saveReq(r) {
+    if (!write(reqKey(r.barId, r.date), { ...r, updatedAt: new Date().toISOString() })) return false
+    emit({ form: 'req', barId: r.barId, date: r.date })
+    return true
+  },
+
+  onSaved(listener) {
+    listeners.add(listener)
+    return () => {
+      listeners.delete(listener)
+    }
+  },
+
+  mergeRemote(form, record, pendingKeys) {
+    if (!isObj(record) || typeof record.barId !== 'string' || typeof record.date !== 'string') return false
+    const { barId, date } = record
+    if (pendingKeys.has(`${form}:${barId}:${date}`)) return false
+    if (form === 'report') {
+      if (!isReport(record, barId, date) || !isValidDate(date)) return false
+      return write(reportKey(barId, date), record)
+    }
+    if (!isReq(record, barId, date) || !isValidDate(date)) return false
+    return write(reqKey(barId, date), record)
+  },
 
   listReports(barId, month) {
     const prefix = reportPrefix(barId)

@@ -55,7 +55,7 @@ function BtlOzInput({
 }
 
 function ItemCard({ item, row, onChange }: Props) {
-  const size = item.sizeOz ?? 0
+  const size = row.sizeOz ?? item.sizeOz ?? 0
   const code = item.code
   const { closed, variance, negative } = calcRow(row, size)
   const set = (patch: RowPatch) => onChange(code, patch)

@@ -22,8 +22,8 @@ describe('repo', () => {
   it('saves then gets a report and a requisition', () => {
     repo.saveReport(report('pf', '2026-11-01'))
     repo.saveReq(req('pf', '2026-11-01'))
-    expect(repo.getReport('pf', '2026-11-01')).toEqual(report('pf', '2026-11-01'))
-    expect(repo.getReq('pf', '2026-11-01')).toEqual(req('pf', '2026-11-01'))
+    expect(repo.getReport('pf', '2026-11-01')).toEqual({ ...report('pf', '2026-11-01'), updatedAt: expect.any(String) })
+    expect(repo.getReq('pf', '2026-11-01')).toEqual({ ...req('pf', '2026-11-01'), updatedAt: expect.any(String) })
   })
 
   it('returns null when nothing is stored', () => {
@@ -111,7 +111,7 @@ describe('repo', () => {
   it('round-trips a row carrying openFrom', () => {
     const r = { ...report('pf', '2026-11-02'), rows: [{ ...row, openFrom: '2026-11-01' }] }
     repo.saveReport(r)
-    expect(repo.getReport('pf', '2026-11-02')).toEqual(r)
+    expect(repo.getReport('pf', '2026-11-02')).toEqual({ ...r, updatedAt: expect.any(String) })
   })
 })
 
@@ -221,5 +221,104 @@ describe('repo write result', () => {
     })
     expect(repo.saveReport(report('pf', '2026-11-01'))).toBe(false)
     expect(repo.saveReq(req('pf', '2026-11-01'))).toBe(false)
+  })
+})
+
+describe('updatedAt, onSaved, mergeRemote', () => {
+  const failing = () =>
+    vi.spyOn(Storage.prototype, 'setItem').mockImplementation(() => {
+      throw new DOMException('full', 'QuotaExceededError')
+    })
+
+  it('saveReport/saveReq set updatedAt on success', () => {
+    expect(repo.saveReport(report('pf', '2026-11-01'))).toBe(true)
+    expect(repo.saveReq(req('pf', '2026-11-01'))).toBe(true)
+    const a = repo.getReport('pf', '2026-11-01')!.updatedAt!
+    const b = repo.getReq('pf', '2026-11-01')!.updatedAt!
+    expect(new Date(a).toISOString()).toBe(a)
+    expect(new Date(b).toISOString()).toBe(b)
+  })
+
+  it('does not set updatedAt on a failed write', () => {
+    failing()
+    const r = report('pf', '2026-11-01')
+    expect(repo.saveReport(r)).toBe(false)
+    expect(r.updatedAt).toBeUndefined()
+  })
+
+  it('onSaved fires once per successful save with form/barId/date', () => {
+    const fn = vi.fn()
+    const off = repo.onSaved(fn)
+    repo.saveReport(report('pf', '2026-11-01'))
+    repo.saveReq(req('pf', '2026-11-02'))
+    expect(fn).toHaveBeenCalledTimes(2)
+    expect(fn).toHaveBeenNthCalledWith(1, { form: 'report', barId: 'pf', date: '2026-11-01' })
+    expect(fn).toHaveBeenNthCalledWith(2, { form: 'req', barId: 'pf', date: '2026-11-02' })
+    off()
+    repo.saveReport(report('pf', '2026-11-03'))
+    expect(fn).toHaveBeenCalledTimes(2)
+  })
+
+  it('onSaved does not fire on a failed write', () => {
+    const fn = vi.fn()
+    const off = repo.onSaved(fn)
+    failing()
+    repo.saveReport(report('pf', '2026-11-01'))
+    repo.saveReq(req('pf', '2026-11-01'))
+    expect(fn).not.toHaveBeenCalled()
+    off()
+  })
+
+  it('a throwing listener does not break the save or other listeners', () => {
+    const bad = vi.fn(() => { throw new Error('boom') })
+    const good = vi.fn()
+    const o1 = repo.onSaved(bad)
+    const o2 = repo.onSaved(good)
+    expect(repo.saveReport(report('pf', '2026-11-01'))).toBe(true)
+    expect(good).toHaveBeenCalledTimes(1)
+    expect(repo.getReport('pf', '2026-11-01')).not.toBeNull()
+    o1(); o2()
+  })
+
+  it('mergeRemote replaces, keeps incoming updatedAt, and never fires onSaved', () => {
+    const fn = vi.fn()
+    const off = repo.onSaved(fn)
+    repo.saveReport(report('pf', '2026-11-01', 'draft'))
+    fn.mockClear()
+    const incoming = { ...report('pf', '2026-11-01', 'saved'), updatedAt: '2026-01-01T00:00:00.000Z' }
+    expect(repo.mergeRemote('report', incoming, new Set())).toBe(true)
+    expect(repo.getReport('pf', '2026-11-01')).toEqual(incoming)
+    const rq = { ...req('pf', '2026-11-01'), updatedAt: '2026-01-02T00:00:00.000Z' }
+    expect(repo.mergeRemote('req', rq, new Set())).toBe(true)
+    expect(repo.getReq('pf', '2026-11-01')).toEqual(rq)
+    expect(fn).not.toHaveBeenCalled()
+    off()
+  })
+
+  it('mergeRemote skips when the key is pending', () => {
+    repo.saveReport(report('pf', '2026-11-01', 'draft'))
+    const incoming = report('pf', '2026-11-01', 'saved')
+    expect(repo.mergeRemote('report', incoming, new Set(['report:pf:2026-11-01']))).toBe(false)
+    expect(repo.getReport('pf', '2026-11-01')!.status).toBe('draft')
+    // other keys / other form do not block
+    expect(repo.mergeRemote('report', incoming, new Set(['req:pf:2026-11-01']))).toBe(true)
+  })
+
+  it('mergeRemote skips malformed records', () => {
+    const bad = [
+      null,
+      { barId: 'pf', date: '2026-11-01', status: 'x', rows: [] },
+      { barId: 'pf', date: '2026-11-01', status: 'saved', rows: 'no' },
+      { barId: 'pf', date: '2026-11-01', status: 'saved', rows: [{ qty: 1 }] },
+      { barId: 'pf', date: 'nope', status: 'saved', rows: [] },
+    ]
+    for (const b of bad) expect(repo.mergeRemote('report', b as never, new Set())).toBe(false)
+    expect(repo.mergeRemote('req', { ...req('pf', '2026-11-01'), rows: [{ itemCode: 'A', qty: 'x' }] } as never, new Set())).toBe(false)
+    expect(localStorage.length).toBe(0)
+  })
+
+  it('mergeRemote returns false when the write fails', () => {
+    failing()
+    expect(repo.mergeRemote('report', report('pf', '2026-11-01'), new Set())).toBe(false)
   })
 })

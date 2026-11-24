@@ -15,6 +15,8 @@ export interface BarReportRow {
   remark: string;
   /** YYYY-MM-DD of the earlier report Open was auto-filled from; cleared when Open is edited by hand. */
   openFrom?: string;
+  /** Item size (oz) when this row was first persisted; calculations prefer it over the item's current size. */
+  sizeOz?: number;
 }
 
 export interface Item {

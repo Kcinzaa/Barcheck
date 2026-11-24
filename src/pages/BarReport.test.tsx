@@ -369,7 +369,7 @@ describe('BarReport', () => {
       renderPage()
       type(item25.code, 'Sale oz', '5')
       act(() => vi.advanceTimersByTime(300))
-      expect(savedRow(item25.code)).toEqual({ itemCode: item25.code, ...blank, openOz: 23, sale: 5, openFrom: PREV })
+      expect(savedRow(item25.code)).toEqual({ itemCode: item25.code, ...blank, openOz: 23, sale: 5, openFrom: PREV, sizeOz: 25 })
       expect(repo.getReport(BAR, DATE)!.rows).toHaveLength(1) // prefilled-only rows are not stored
       expect(note(item25.code)?.textContent).toBe(NOTE)
       expect(counter()).toBe(`กรอกแล้ว 1/${N}`)
@@ -403,7 +403,7 @@ describe('BarReport', () => {
       expect(counter()).toBe(`กรอกแล้ว 1/${N}`)
       fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))
       const row = savedRow(item25.code)!
-      expect(row).toEqual({ itemCode: item25.code, ...blank, openOz: 20 })
+      expect(row).toEqual({ itemCode: item25.code, ...blank, openOz: 20, sizeOz: 25 })
       expect('openFrom' in row).toBe(false)
     })
 
@@ -424,7 +424,7 @@ describe('BarReport', () => {
       expect(field(item25.code, 'Open oz').value).toBe('23')
       fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))
       const row = savedRow(item25.code)!
-      expect(row).toEqual({ itemCode: item25.code, ...blank, openBtl: 1, openOz: 23 })
+      expect(row).toEqual({ itemCode: item25.code, ...blank, openBtl: 1, openOz: 23, sizeOz: 25 })
       expect('openFrom' in row).toBe(false)
     })
 
@@ -577,6 +577,35 @@ describe('BarReport', () => {
       spy.mockRestore()
       unmount()
       expect(repo.getReport(BAR, DATE)!.rows[0]).toMatchObject({ itemCode: item25.code, sale: 4 })
+    })
+  })
+
+  describe('sizeOz snapshot', () => {
+    it('stamps the item size on persisted rows', () => {
+      renderPage()
+      type(item25.code, 'Sale oz', '4')
+      type(item23.code, 'Sale oz', '2')
+      fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))
+      const rows = repo.getReport(BAR, DATE)!.rows
+      expect(rows.find((r) => r.itemCode === item25.code)!.sizeOz).toBe(25)
+      expect(rows.find((r) => r.itemCode === item23.code)!.sizeOz).toBe(23)
+    })
+
+    it('keeps a stored snapshot and uses it for display math', () => {
+      repo.saveReport({
+        barId: BAR, date: DATE, reportBy: '', status: 'draft',
+        rows: [{ itemCode: item23.code, openBtl: 1, openOz: 0, dailyStore: 0, transferIn: 0, transferOut: 0, sale: 5, remark: '', sizeOz: 25 }],
+      })
+      renderPage()
+      expect(closedText(item23.code)).toBe('0 ขวด 20 oz')
+      type(item23.code, 'Sale oz', '6')
+      fireEvent.click(screen.getByRole('button', { name: 'บันทึก' }))
+      expect(repo.getReport(BAR, DATE)!.rows[0].sizeOz).toBe(25)
+    })
+
+    it('writes nothing on open (prefilled rows get no snapshot)', () => {
+      renderPage()
+      expect(repo.getReport(BAR, DATE)).toBeNull()
     })
   })
 })
