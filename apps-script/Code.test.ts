@@ -268,17 +268,22 @@ describe('row mapping', () => {
     const rec = sheetValuesToRecords('report', rowsToSheetValues('report', 'the-cove', '2026-11-20', [row()], { ...meta, reportBy: 'สมชาย' }, NOW), 'the-cove', '2026-11')[0]
     expect(rec.reportBy).toBe('สมชาย')
   })
-  it('formula injection: prefixed in sheet, stripped on read', () => {
-    for (const bad of ['=SUM(A1)', '+1', '-1+2', '@x', "'already"]) {
-      const vals = rowsToSheetValues('report', 'the-cove', '2026-11-20', [row({ remark: bad })], { reportBy: bad, status: 'saved', items: { A1: { name: bad, category: bad } } }, NOW)
-      for (const i of [3, 4, 14, 17]) expect(String(vals[0][i]).startsWith("'")).toBe(true)
+  it('text is never altered: =1+1, +1, -2, @x, \'x round trip unchanged (itemCode, names, remark, by)', () => {
+    for (const t of ['=1+1', '+1', '-2', '@x', "'x"]) {
+      const vals = rowsToSheetValues('report', 'the-cove', '2026-11-20', [row({ itemCode: t, remark: t })],
+        { reportBy: t, status: 'saved', items: { [t]: { name: t, category: t } } }, NOW)
+      expect(vals[0][2]).toBe(t); expect(vals[0][3]).toBe(t); expect(vals[0][14]).toBe(t)
       const rec = sheetValuesToRecords('report', vals, 'the-cove', '2026-11')[0]
-      expect(rec.rows[0].remark).toBe(bad)
-      expect(rec.reportBy).toBe(bad)
+      expect(rec.rows[0].itemCode).toBe(t)
+      expect(rec.rows[0].remark).toBe(t)
+      expect(rec.reportBy).toBe(t)
     }
-    // ordinary text is untouched
-    const vals = rowsToSheetValues('report', 'the-cove', '2026-11-20', [row({ remark: 'fine' })], meta, NOW)
-    expect(vals[0][14]).toBe('fine')
+  })
+  it('0.1 and -0 survive', () => {
+    const vals = rowsToSheetValues('report', 'b', '2026-11-20', [row({ sale: 0.1, openOz: -0 })], { status: 'saved' }, NOW)
+    const r = sheetValuesToRecords('report', vals, 'b', '2026-11')[0].rows[0]
+    expect(r.sale).toBe(0.1)
+    expect(Object.is(r.openOz, -0)).toBe(true)
   })
   it('requisition column order', () => {
     const [v] = rowsToSheetValues('req', 'the-cove', '2026-11-20', [{ itemCode: 'A1', qty: 2 }],
@@ -291,5 +296,51 @@ describe('constants', () => {
   it('BAR_IDS and ITEMS_SEED', () => {
     expect(Array.from(api.BAR_IDS)).toEqual(['the-cove', 'mango', 'coconut', 'fm', 'ct', 'palm', 'pn', 'pf-bb', 'bc', 'th-saya', 'pipin', 'ray-bar'])
     expect(Array.isArray(api.ITEMS_SEED)).toBe(true)
+  })
+})
+
+describe('dedupe, busy, limits, helpers', () => {
+  it('load dedupes (date,itemCode): last row wins, no double count', () => {
+    const s = makeStore()
+    handleRequest(req(push({ rows: [row({ itemCode: 'A1', sale: 1 }), row({ itemCode: 'A2' })] })), s)
+    s.data.report.push(...rowsToSheetValues('report', 'the-cove', '2026-11-20', [row({ itemCode: 'A1', sale: 9 })], { reportBy: 'Nok', status: 'saved' }, '2026-11-24T11:00:00.000Z'))
+    const l = handleRequest(req({ action: 'load', barId: 'the-cove', key: 'key-cove', month: '2026-11' }), s)
+    expect(l.reports[0].rows.map((r) => [r.itemCode, r.sale])).toEqual([['A1', 9], ['A2', 3]])
+    expect(l.reports[0].updatedAt).toBe('2026-11-24T11:00:00.000Z')
+  })
+  it('lock timeout -> busy (not server_error)', () => {
+    const s = makeStore()
+    s.lock = () => { throw { code: 'busy' } }
+    expect(handleRequest(req(push()), s)).toEqual({ ok: false, error: 'busy' })
+  })
+  it('now() is taken inside the lock', () => {
+    const s = makeStore()
+    handleRequest(req(push()), s)
+    expect(s.calls.indexOf('lock')).toBeLessThan(s.calls.indexOf('now'))
+  })
+  it('remark null accepted as empty', () => {
+    const s = makeStore()
+    expect(handleRequest(req(push({ rows: [row({ remark: null })] })), s).ok).toBe(true)
+    expect(s.data.report[0][14]).toBe('')
+  })
+  it('limits: old dates, huge numbers rejected', () => {
+    expect(handleRequest(req(push({ date: '0099-01-01' })), makeStore()).error).toBe('bad_request')
+    expect(handleRequest(req(push({ date: '2101-01-01' })), makeStore()).error).toBe('bad_request')
+    expect(handleRequest(req(push({ rows: [row({ sale: 1e9 })] })), makeStore()).error).toBe('bad_request')
+    expect(handleRequest(req({ action: 'load', barId: 'the-cove', key: 'key-cove', month: '0099-01' }), makeStore()).error).toBe('bad_request')
+    expect(handleRequest(req(push({ rows: [row({ sale: 1e7 })] })), makeStore()).ok).toBe(true)
+  })
+  it('pickKey_: skips blank, first non-blank wins, other bars ignored', () => {
+    const { pickKey_ } = vm.runInContext('({pickKey_})', ctx)
+    const rows = [['mango', 'm'], ['the-cove', ''], ['the-cove', '  '], ['the-cove', 'k1'], ['the-cove', 'k2']]
+    expect(pickKey_(rows, 'the-cove')).toBe('k1')
+    expect(pickKey_(rows, 'fm')).toBeNull()
+    expect(pickKey_([['fm', '']], 'fm')).toBeNull()
+  })
+  it('matchRowNumbers_/toRuns_ collapse contiguous rows', () => {
+    const { toRuns_, matchRowNumbers_ } = vm.runInContext('({toRuns_, matchRowNumbers_})', ctx)
+    expect(JSON.parse(JSON.stringify(toRuns_([2, 3, 4, 7, 9, 10])))).toEqual([{ start: 2, count: 3 }, { start: 7, count: 1 }, { start: 9, count: 2 }])
+    const ab = [['b', '2026-11-01'], ['x', '2026-11-01'], ['b', '2026-11-01'], ['b', '2026-12-01']]
+    expect(Array.from(matchRowNumbers_(ab, (bar, d) => bar === 'b' && d === '2026-11-01'))).toEqual([2, 4])
   })
 })

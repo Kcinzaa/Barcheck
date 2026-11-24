@@ -18,6 +18,13 @@
  *   items {action,barId,key}                  -> {ok,items}
  *   Errors: {ok:false,error:'unauthorized'|'bad_request'|'server_error'}
  *
+ * Scaling: every request reads only columns A:B to locate rows; very large sheets should be
+ * archived yearly (move old Reports/Requisitions rows to another spreadsheet).
+ *
+ * Text safety: ALL text columns are plain-text formatted ('@') in setup() and on every write, so values
+ * such as =1+1, +1, -2, @x, 'x are stored literally. The pure layer never alters text.
+ * OWNER MUST VERIFY in Google: a remark of =1+1 and 'x display literally and read back unchanged.
+ *
  * Plain V8 JS only: no import/export, no TypeScript.
  */
 
@@ -41,6 +48,7 @@ const KEY_HEADERS = ['barId', 'key'];
 const MAX_BODY_CHARS = 1000000;
 const MAX_ROWS = 500;
 const MAX_TEXT = 2000;
+const MAX_NUM = 1e7;
 
 // Report column indexes (0-based).
 const RC = { barId: 0, date: 1, itemCode: 2, itemName: 3, category: 4, sizeOz: 5, openBtl: 6, openOz: 7,
@@ -65,13 +73,13 @@ function isBarId_(s) {
 function isDate_(s) {
   if (typeof s !== 'string' || !/^\d{4}-\d{2}-\d{2}$/.test(s)) return false;
   const y = Number(s.slice(0, 4)), m = Number(s.slice(5, 7)), d = Number(s.slice(8, 10));
-  if (m < 1 || m > 12 || d < 1) return false;
+  if (y < 2000 || y > 2100 || m < 1 || m > 12 || d < 1) return false;
   const dim = new Date(Date.UTC(y, m, 0)).getUTCDate();
   return d <= dim;
 }
 
 function isMonth_(s) {
-  return typeof s === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(s);
+  return typeof s === 'string' && /^\d{4}-(0[1-9]|1[0-2])$/.test(s) && Number(s.slice(0, 4)) >= 2000 && Number(s.slice(0, 4)) <= 2100;
 }
 
 function isForm_(s) {
@@ -83,20 +91,12 @@ function isStatus_(s) {
 }
 
 function isFiniteNum_(n) {
-  return typeof n === 'number' && isFinite(n);
+  return typeof n === 'number' && isFinite(n) && Math.abs(n) <= MAX_NUM;
 }
 
-/** Text -> sheet cell. Cells that could be parsed as formulas get a leading apostrophe. */
-function escapeText_(v) {
-  const s = v === undefined || v === null ? '' : String(v);
-  return /^[=+\-@'\t\r]/.test(s) ? "'" + s : s;
-}
-
-/** Sheet cell -> text. Inverse of escapeText_. */
-function unescapeText_(v) {
-  if (v === undefined || v === null) return '';
-  const s = String(v);
-  return s.charAt(0) === "'" ? s.slice(1) : s;
+/** Text cell -> string. Text is stored and returned verbatim (no escaping; columns are '@' formatted). */
+function textCell_(v) {
+  return v === undefined || v === null ? '' : String(v);
 }
 
 /** Empty/absent -> undefined; number or numeric string -> finite number; otherwise NaN (malformed). */
@@ -140,19 +140,19 @@ function rowsToSheetValues(form, barId, date, rows, meta, nowIso) {
     const info = itemInfo_(m, r.itemCode);
     if (form === 'report') {
       out.push([
-        barId, date, r.itemCode, escapeText_(info.name), escapeText_(info.category),
+        barId, date, r.itemCode, textCell_(info.name), textCell_(info.category),
         r.sizeOz === undefined ? '' : r.sizeOz,
         r.openBtl, r.openOz, r.dailyStore, r.transferIn, r.transferOut, r.sale,
         r.countedBtl === undefined ? '' : r.countedBtl,
         r.countedOz === undefined ? '' : r.countedOz,
-        escapeText_(r.remark),
+        textCell_(r.remark),
         r.openFrom === undefined ? '' : r.openFrom,
-        m.status, escapeText_(m.reportBy), nowIso,
+        m.status, textCell_(m.reportBy), nowIso,
       ]);
     } else {
       out.push([
-        barId, date, r.itemCode, escapeText_(info.name), r.qty,
-        escapeText_(m.requestedBy), escapeText_(m.approvedBy), escapeText_(m.issuedBy), m.status, nowIso,
+        barId, date, r.itemCode, textCell_(info.name), r.qty,
+        textCell_(m.requestedBy), textCell_(m.approvedBy), textCell_(m.issuedBy), m.status, nowIso,
       ]);
     }
   }
@@ -162,7 +162,7 @@ function rowsToSheetValues(form, barId, date, rows, meta, nowIso) {
 /** Sheet row -> {date, row, meta} or null if malformed. */
 function parseReportRow_(v) {
   if (!Array.isArray(v) || v.length < REPORT_HEADERS.length) return null;
-  const itemCode = unescapeText_(v[RC.itemCode]);
+  const itemCode = textCell_(v[RC.itemCode]);
   const status = String(v[RC.status]);
   if (itemCode === '' || !isStatus_(status)) return null;
   const nums = {};
@@ -175,7 +175,7 @@ function parseReportRow_(v) {
   const row = {
     itemCode: itemCode, openBtl: nums.openBtl, openOz: nums.openOz, dailyStore: nums.dailyStore,
     transferIn: nums.transferIn, transferOut: nums.transferOut, sale: nums.sale,
-    remark: unescapeText_(v[RC.remark]),
+    remark: textCell_(v[RC.remark]),
   };
   const optional = ['countedBtl', 'countedOz', 'sizeOz'];
   for (let i = 0; i < optional.length; i++) {
@@ -186,19 +186,19 @@ function parseReportRow_(v) {
   if (row.sizeOz !== undefined && row.sizeOz <= 0) delete row.sizeOz;
   const openFrom = cellDate_(v[RC.openFrom]);
   if (openFrom !== '') row.openFrom = openFrom;
-  return { row: row, status: status, reportBy: unescapeText_(v[RC.reportBy]), updatedAt: cellIso_(v[RC.updatedAt]) };
+  return { row: row, status: status, reportBy: textCell_(v[RC.reportBy]), updatedAt: cellIso_(v[RC.updatedAt]) };
 }
 
 function parseReqRow_(v) {
   if (!Array.isArray(v) || v.length < REQ_HEADERS.length) return null;
-  const itemCode = unescapeText_(v[QC.itemCode]);
+  const itemCode = textCell_(v[QC.itemCode]);
   const status = String(v[QC.status]);
   const qty = parseNum_(v[QC.qty]);
   if (itemCode === '' || !isStatus_(status) || qty === undefined || isNaN(qty)) return null;
   return {
     row: { itemCode: itemCode, qty: qty }, status: status,
-    requestedBy: unescapeText_(v[QC.requestedBy]), approvedBy: unescapeText_(v[QC.approvedBy]),
-    issuedBy: unescapeText_(v[QC.issuedBy]), updatedAt: cellIso_(v[QC.updatedAt]),
+    requestedBy: textCell_(v[QC.requestedBy]), approvedBy: textCell_(v[QC.approvedBy]),
+    issuedBy: textCell_(v[QC.issuedBy]), updatedAt: cellIso_(v[QC.updatedAt]),
   };
 }
 
@@ -208,6 +208,7 @@ function parseReqRow_(v) {
  */
 function sheetValuesToRecords(form, values, barId, month) {
   const byDate = {};
+  const seenCodes = {};
   const dates = [];
   for (let i = 0; i < (values || []).length; i++) {
     const v = values[i];
@@ -227,7 +228,10 @@ function sheetValuesToRecords(form, values, barId, month) {
       dates.push(date);
     }
     if (p.updatedAt > rec.updatedAt) rec.updatedAt = p.updatedAt;
-    rec.rows.push(p.row);
+    // Duplicate (date,itemCode) rows can remain after an interrupted push: the LAST row wins.
+    const seen = seenCodes[date] || (seenCodes[date] = {});
+    if (Object.prototype.hasOwnProperty.call(seen, p.row.itemCode)) rec.rows[seen[p.row.itemCode]] = p.row;
+    else { seen[p.row.itemCode] = rec.rows.length; rec.rows.push(p.row); }
   }
   dates.sort();
   return dates.map(function (d) { return byDate[d]; });
@@ -264,7 +268,8 @@ function validateRows_(form, rows) {
       nr[opt[k]] = x;
     }
     if (nr.sizeOz !== undefined && nr.sizeOz <= 0) delete nr.sizeOz;
-    if (r.remark !== undefined && typeof r.remark !== 'string') return null;
+    // remark: undefined/null are accepted and stored as ''.
+    if (r.remark !== undefined && r.remark !== null && typeof r.remark !== 'string') return null;
     nr.remark = cleanText_(r.remark);
     if (r.openFrom !== undefined && r.openFrom !== null) {
       if (!isDate_(r.openFrom)) return null;
@@ -297,6 +302,38 @@ function keyMatches_(given, expected) {
   const n = Math.max(given.length, expected.length);
   for (let i = 0; i < n; i++) diff |= (given.charCodeAt(i) || 0) ^ (expected.charCodeAt(i) || 0);
   return diff === 0;
+}
+
+/** First non-blank key for barId from rows of [barId, key]; null if none. */
+function pickKey_(keyRows, barId) {
+  for (let i = 0; i < (keyRows || []).length; i++) {
+    const r = keyRows[i];
+    if (!Array.isArray(r) || String(r[0]) !== barId) continue;
+    const k = r[1] === undefined || r[1] === null ? '' : String(r[1]).trim();
+    if (k !== '') return k;
+  }
+  return null;
+}
+
+/** Sheet row numbers (1-based, data starts at row 2) of rows in [barId,date] pairs accepted by pred(barId,date). */
+function matchRowNumbers_(abValues, pred) {
+  const out = [];
+  for (let i = 0; i < (abValues || []).length; i++) {
+    const v = abValues[i];
+    if (Array.isArray(v) && pred(String(v[0]), cellDate_(v[1]))) out.push(i + 2);
+  }
+  return out;
+}
+
+/** Ascending row numbers -> contiguous runs [{start,count}]. */
+function toRuns_(rowNumbers) {
+  const runs = [];
+  for (let i = 0; i < rowNumbers.length; i++) {
+    const last = runs[runs.length - 1];
+    if (last && rowNumbers[i] === last.start + last.count) last.count++;
+    else runs.push({ start: rowNumbers[i], count: 1 });
+  }
+  return runs;
 }
 
 const ERR_ = function (e) { return { ok: false, error: e }; };
@@ -349,12 +386,16 @@ function handleRequest(bodyString, store) {
     if (!rows) return ERR_('bad_request');
     const meta = cleanMeta_(body.form, body.meta);
     if (rows.length > 0 && meta.status === null) return ERR_('bad_request');
-    const nowIso = store.now();
+    // Timestamp is taken INSIDE the lock so a slow earlier push cannot stamp an older time after a newer one.
+    let nowIso = '';
     store.lock(function () {
+      nowIso = store.now();
       store.upsertRecord(body.form, barId, body.date, rows, meta, nowIso);
     });
     return { ok: true, applied: rows.length, serverUpdatedAt: nowIso };
   } catch (e) {
+    // store.lock throws {code:'busy'} when the lock cannot be acquired in time.
+    if (e && e.code === 'busy') return ERR_('busy');
     // Never leak error text/stack to the client.
     return ERR_('server_error');
   }
@@ -380,47 +421,70 @@ function makeSheetStore() {
   const ss = SpreadsheetApp.getActiveSpreadsheet();
   const tab = function (form) { return ss.getSheetByName(form === 'report' ? 'Reports' : 'Requisitions'); };
   const width = function (form) { return form === 'report' ? REPORT_HEADERS.length : REQ_HEADERS.length; };
-  const readAll = function (form) {
-    const sh = tab(form);
+  // 1-based text columns per form (everything except the numeric columns).
+  const textCols = function (form) {
+    return form === 'report' ? [1, 2, 3, 4, 5, 15, 16, 17, 18, 19] : [1, 2, 3, 4, 6, 7, 8, 9, 10];
+  };
+  // Only columns A:B are read to locate rows.
+  const readAB = function (sh) {
     const n = sh.getLastRow() - 1;
-    return n > 0 ? sh.getRange(2, 1, n, width(form)).getValues() : [];
+    return n > 0 ? sh.getRange(2, 1, n, 2).getValues() : [];
   };
   return {
     now: function () { return new Date().toISOString(); },
     keyFor: function (barId) {
       const sh = ss.getSheetByName('Keys');
       const n = sh.getLastRow() - 1;
-      const vals = n > 0 ? sh.getRange(2, 1, n, 2).getValues() : [];
-      for (let i = 0; i < vals.length; i++) if (String(vals[i][0]) === barId) return String(vals[i][1]);
-      return null;
+      return pickKey_(n > 0 ? sh.getRange(2, 1, n, 2).getValues() : [], barId);
     },
     lock: function (fn) {
       const lock = LockService.getScriptLock();
-      lock.waitLock(20000);
-      try { return fn(); } finally { lock.releaseLock(); }
-    },
-    upsertRecord: function (form, barId, date, rows, meta, nowIso) {
-      // Called inside lock(). Delete every row of (bar,date), then append the new rows.
-      const sh = tab(form);
-      const w = width(form);
-      const last = sh.getLastRow();
-      if (last > 1) {
-        const vals = sh.getRange(2, 1, last - 1, 2).getValues();
-        for (let i = vals.length - 1; i >= 0; i--) {
-          if (String(vals[i][0]) === barId && cellDate_(vals[i][1]) === date) sh.deleteRow(i + 2);
+      try { lock.waitLock(20000); } catch (e) { throw { code: 'busy' }; }
+      let threw = false;
+      try {
+        return fn();
+      } catch (e) {
+        threw = true;
+        throw e;
+      } finally {
+        try {
+          try { SpreadsheetApp.flush(); } catch (f) { if (!threw) throw f; } // never mask the original error
+        } finally {
+          lock.releaseLock();
         }
       }
-      if (rows.length === 0) return;
-      const out = rowsToSheetValues(form, barId, date, rows, meta, nowIso);
-      const start = sh.getLastRow() + 1;
-      // Text columns are formatted as plain text BEFORE writing so ids/dates are never auto-converted
-      // or parsed as formulas; numeric columns are left alone so numbers stay numbers.
-      const textCols = form === 'report' ? [1, 2, 3, 4, 5, 15, 16, 17, 18, 19] : [1, 2, 3, 4, 6, 7, 8, 9, 10];
-      for (let i = 0; i < textCols.length; i++) sh.getRange(start, textCols[i], out.length, 1).setNumberFormat('@');
-      sh.getRange(start, 1, out.length, w).setValues(out);
+    },
+    upsertRecord: function (form, barId, date, rows, meta, nowIso) {
+      // Called inside lock(). APPEND-FIRST: write new rows, then delete the old ones, so a failure
+      // leaves duplicates (deduped on load, last row wins), never loss.
+      const sh = tab(form);
+      const old = matchRowNumbers_(readAB(sh), function (b, d) { return b === barId && d === date; });
+      if (rows.length > 0) {
+        const out = rowsToSheetValues(form, barId, date, rows, meta, nowIso);
+        const start = sh.getLastRow() + 1;
+        const needMax = start + out.length - 1;
+        if (sh.getMaxRows() < needMax) sh.insertRowsAfter(sh.getMaxRows(), needMax - sh.getMaxRows());
+        // Plain-text format on the exact range BEFORE writing, so =1+1, +1, -2, @x, 'x stay literal.
+        const cols = textCols(form);
+        for (let i = 0; i < cols.length; i++) sh.getRange(start, cols[i], out.length, 1).setNumberFormat('@');
+        sh.getRange(start, 1, out.length, width(form)).setValues(out);
+      }
+      if (old.length === 0) return;
+      // Sheets refuses to delete every non-frozen row: keep at least one spare row below the data.
+      if (sh.getMaxRows() <= sh.getLastRow()) sh.insertRowsAfter(sh.getMaxRows(), 1);
+      const runs = toRuns_(old);
+      for (let i = runs.length - 1; i >= 0; i--) sh.deleteRows(runs[i].start, runs[i].count);
     },
     loadMonth: function (form, barId, month) {
-      return sheetValuesToRecords(form, readAll(form), barId, month);
+      const sh = tab(form);
+      const nums = matchRowNumbers_(readAB(sh), function (b, d) { return b === barId && d.slice(0, 7) === month; });
+      const vals = [];
+      const runs = toRuns_(nums);
+      for (let i = 0; i < runs.length; i++) {
+        const got = sh.getRange(runs[i].start, 1, runs[i].count, width(form)).getValues();
+        for (let j = 0; j < got.length; j++) vals.push(got[j]);
+      }
+      return sheetValuesToRecords(form, vals, barId, month);
     },
     items: function () {
       const sh = ss.getSheetByName('Items');
@@ -457,17 +521,27 @@ function setup() {
     }
     return sh;
   };
-  ensure('Reports', REPORT_HEADERS);
-  ensure('Requisitions', REQ_HEADERS);
+  const reports = ensure('Reports', REPORT_HEADERS);
+  const reqs = ensure('Requisitions', REQ_HEADERS);
   const items = ensure('Items', ITEM_HEADERS);
   const summary = ensure('Summary', null);
   const keys = ensure('Keys', KEY_HEADERS);
+
+  // Plain-text format on WHOLE text columns (OWNER MUST VERIFY in Google that =1+1 and 'x display literally).
+  const textFormat = function (sh, cols) {
+    const rowsN = Math.max(sh.getMaxRows() - 1, 1);
+    for (let i = 0; i < cols.length; i++) sh.getRange(2, cols[i], rowsN, 1).setNumberFormat('@');
+  };
+  textFormat(reports, [1, 2, 3, 4, 5, 15, 16, 17, 18, 19]);
+  textFormat(reqs, [1, 2, 3, 4, 6, 7, 8, 9, 10]);
+  textFormat(items, [1, 2, 3, 4]);
+  textFormat(keys, [1, 2]);
 
   if (items.getLastRow() <= 1 && ITEMS_SEED.length > 0) {
     const vals = ITEMS_SEED.map(function (it) {
       return [it.code, it.name, it.category, it.form, it.sizeOz === undefined ? '' : it.sizeOz, it.active === false ? false : true];
     });
-    items.getRange(2, 1, vals.length, ITEM_HEADERS.length).setNumberFormat('@').setValues(vals);
+    items.getRange(2, 1, vals.length, ITEM_HEADERS.length).setValues(vals); // text cols already '@' above
   }
 
   const existing = {};
@@ -490,6 +564,7 @@ function setup() {
 
   // Summary: ONE simple formula block (sale oz per bar, all time).
   // UNVERIFIED IN GOOGLE; owner to check it renders and adjust if needed.
+  summary.getRange('A1').setNote('Unverified in Google; owner to check this formula.');
   summary.getRange('A1').setFormula(
     '=QUERY(Reports!A2:S, "select A, sum(L) where A is not null group by A label A \'Bar\', sum(L) \'Sale oz\'", 0)'
   );
