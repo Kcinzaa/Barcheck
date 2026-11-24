@@ -217,3 +217,37 @@ scripts/build-seed.py      # builds items.json from the Excel files + PDF transc
 - [ ] **Step 3: Fix** any issues in `styles.css`.
 - [ ] **Step 4: Run** `npx vitest run && npm run build` → Expected: all PASS.
 - [ ] **Step 5: Commit** `style: responsive polish`
+
+---
+
+### Task 11 (added after user feedback): Katathani visual redesign
+
+User asked (after seeing screenshots) for a prettier, more luxurious look fitting Katathani Phuket Beach Resort, easier to use. Brand cues were taken from the resort's public website (theme-color `#b69e7a`; sand `#d0bda0`/`#d0b080`; cream `#fbf6ed`/`#f4f2ee`; charcoal `#1c1b1a`/`#403e3b`; burgundy `#883832`/`#8B3B32`; sun orange `#F7981D` from the logo; fonts Lora + Assistant). CSS/markup-class changes only: no logic changes, all existing tests pass unmodified. Logo is bundled at `public/logo.webp`.
+
+---
+
+### Task 12 (added after user feedback): Prefill Open from the previous Closed
+
+**Decision from the user:** "ให้ Open เติมจาก Closed เมื่อวานเลย". Rules (design calls marked *call*):
+- Per item, find the latest record for the same bar with a date **strictly earlier** than the page date in which that item's row `isTouched`. Carry value = that row's counted value if `countedBtl`/`countedOz` is set, else `calcRow(...).closed`; carry = `max(0, value)` (*call: negative stock is carried as 0*). *call:* "latest earlier record" (not only yesterday) so days off do not break the chain. Draft and saved records both count.
+- The prefilled Open is **display state only until the card is edited**. New optional field `openFrom?: string` (YYYY-MM-DD) on `BarReportRow` marks "Open was auto-filled from this date". `isTouched` ignores `openBtl`/`openOz` while `openFrom` is set. Manually editing Open clears `openFrom`. Editing any other field keeps it. Consequences: counter "กรอกแล้ว x/N", persistence (touched rows only) and the monthly summary never count prefilled-only rows; opening the page still writes nothing.
+- A date that already has a stored row for an item uses the stored row (never overwritten by prefill). Dates later than the page date are ignored.
+- Each prefilled card shows "เติมจากวันที่ YYYY-MM-DD" near Open (hidden once `openFrom` is cleared).
+
+**Files:** Modify `src/domain/types.ts`, `src/domain/calc.ts` (`isTouched`), `src/storage/repo.ts` (`Repo.latestTouchedBefore`), `src/pages/BarReport.tsx`, `src/components/ItemCard.tsx`, `src/styles.css` (note styling only); Create `src/domain/carry.ts`; Tests alongside.
+
+**Interfaces:**
+- `carryOpen(row: BarReportRow, sizeOz: number): { openBtl: number; openOz: number }` (pure; uses `calcRow`, `fromOz`).
+- `Repo.latestTouchedBefore(barId: string, date: string): Record<string, { date: string; row: BarReportRow }>` — per itemCode the latest touched row among records with `date` strictly before `date` (any month), shape-validated like `listReports`; corrupt entries skipped.
+
+**Tests (write first):** `carryOpen` uses counted over computed; negative closed → 0; 30 oz on a 23 oz bottle normalises; `isTouched` false for a row with only `openFrom` + open values, true once sale is set; repo returns latest per item across a month boundary, ignores same-day and later dates, includes drafts, skips corrupt records, returns `{}` when nothing earlier; BarReport: a new date shows prefilled Open and the note, counter stays `0/N`, opening writes nothing (`saveReport` spy), editing Sale stores the row with Open and `openFrom`, manually editing Open clears the note and `openFrom`, an existing stored row is not overwritten, a date earlier than all records has no prefill.
+
+---
+
+### Task 13 (added after user feedback): Average daily sale in the monthly summary
+
+**Decision from the user:** "ยอดขายเฉลี่ยต่อวัน". *call:* `avgDailySale = totalSale / recordedDays`, where `recordedDays` = number of distinct dates the bar has a record in the month (so a day the bar reported but the item was untouched counts as 0 sale); `0` when `recordedDays` is 0; rounded to 0.1 oz.
+
+**Files:** Modify `src/domain/summary.ts` (`SummaryRow.avgDailySale: number`), `src/pages/Monthly.tsx` (new column "ขายเฉลี่ย/วัน", shown with `fromOz` like other quantities, mobile layout stays free of horizontal page scroll), `src/export/xlsx.ts` (`toSheets` Summary sheet gains a numeric column `avgDailySale` in oz); tests alongside.
+
+**Tests (write first):** 3 recorded days, item sold 30 oz on one touched day → avg 10; recordedDays counts days where the item was untouched; draft days count; `recordedDays` 0 never divides by zero; Monthly page shows the column header and value; `toSheets` Summary row has the numeric avg cell and header.
