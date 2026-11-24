@@ -21,7 +21,7 @@ React app → **sync layer (write-behind)** → **Google Apps Script Web App** �
 - `repo` เดิม (localStorage, sync) ยังเป็นแหล่งความจริงในเครื่อง หน้าจอทั้ง 5 ไฟล์ที่เรียกใช้ไม่ต้องเปลี่ยนมาก
 - ทุก `saveReport/saveReq` เขียน localStorage ทันที แล้วใส่คิวส่งขึ้น Apps Script (ลองใหม่เมื่อมีเน็ต)
 - เข้าหน้าบาร์/เดือนใด ดึงข้อมูลจากชีตมารวมเข้า localStorage หนึ่งครั้ง (`repo.load(barId, month)`) มีสถานะ "กำลังซิงก์ / ค้างส่ง N รายการ / ซิงก์แล้ว" ที่หัวหน้า
-- Apps Script ใช้ `LockService` กันเขียนชนกัน และ **upsert** ตามคีย์ (barId, date, itemCode); ชนกันใช้ `updatedAt` ใหม่กว่าชนะ (last-write-wins ระดับแถว)
+- Apps Script ใช้ `LockService` กันเขียนชนกัน และ **upsert** ตามคีย์ (barId, date, itemCode); ชนกันใช้กฎ **ระดับทั้งรายการ (บาร์×วัน×ฟอร์ม) ไม่เทียบนาฬิกามือถือ**: รายการที่ในเครื่องยังมีการเปลี่ยนแปลงค้างส่ง จะไม่ถูกทับตอนดึงข้อมูล ถ้าไม่มีค้างส่ง ข้อมูลจากชีตจะแทนที่ของในเครื่อง; ตอนส่งขึ้น สคริปต์แทนที่ทุกแถวของรายการนั้นในครั้งเดียวภายใต้ lock (ข้อจำกัด: สองเครื่องแก้บาร์/วันเดียวกันพร้อมกัน เครื่องที่ส่งทีหลังชนะทั้งรายการ)
 
 ## Sheet layout (ไฟล์ Google Sheet ไฟล์เดียว)
 - **Reports** (แถวต่อสินค้าที่ "ถูกแตะ"): barId, date, itemCode, itemName, category, sizeOz, openBtl, openOz, dailyStoreOz, transferInOz, transferOutOz, saleOz, countedBtl, countedOz, remark, openFrom, status(draft|saved), reportBy, updatedAt
@@ -51,7 +51,10 @@ React app → **sync layer (write-behind)** → **Google Apps Script Web App** �
 4. หน้าตั้งค่า (ใส่ URL สคริปต์ + access key ของบาร์) + เอกสารติดตั้ง
 5. เทสต์: คิวซิงก์/เน็ตหลุด/ชนกัน (mock fetch) และสคริปต์ทดสอบ Apps Script
 
-## ต้องให้ผู้ใช้ตัดสินใจ
-1. บัญชี Google/ชีตจะอยู่ภายใต้ใคร (Workspace ของโรงแรม หรือบัญชีส่วนตัว) และ IT โรงแรมอนุญาตไหม
-2. ยอมรับการยืนยันตัวตนแบบ access key รายบาร์ (ง่าย) หรือต้องล็อกอินรายบุคคล (แข็งแรงกว่า)
-3. ให้แก้ขนาดขวดในแท็บ Items ได้เลย (ข้อเสนอ) ใช่ไหม
+## Decisions (ผู้ใช้ตอบแล้ว)
+1. ชีตอยู่ภายใต้บัญชี Google ของผู้ใช้เอง (เจ้าของบัญชีเป็นผู้ติดตั้ง Apps Script และ deploy เอง)
+2. ยืนยันตัวตน: ผู้ใช้ตอบ "อะไรก็ได้" → **ผู้ออกแบบเลือก access key รายบาร์** (ง่ายสุด ไม่ต้องมีบัญชี Google) — ถ้าภายหลังต้องแข็งแรงขึ้นค่อยเปลี่ยน
+3. แก้ขนาดขวดในแท็บ Items ได้ และบันทึก `sizeOz` ของวันนั้นลงแต่ละแถว Reports (snapshot) — อนุมัติ ("ได้หมด")
+
+## Setup ที่ผู้ใช้ต้องทำเองในบัญชี Google (ผู้ออกแบบทำแทนไม่ได้)
+สร้างไฟล์ Google Sheet → Extensions › Apps Script → วางสคริปต์ที่เราเตรียมให้ → รันฟังก์ชันตั้งต้นชีต → Deploy เป็น Web app (Execute as me, Anyone with the link) → คัดลอก URL และ access key ที่ระบบสร้างให้แต่ละบาร์ → ใส่ในหน้าตั้งค่าของแอป ข้อมูลขั้นตอนละเอียดจะอยู่ใน `docs/sheets-setup.md`
